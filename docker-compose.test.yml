@@ -11,4 +11,4 @@ services:
     working_dir: /src/web
     volumes:
       - ./:/src
-    command: sh -lc "npm install && npm run build"
+    command: sh -lc "npm ci && npm run build"

@@ -19,7 +19,8 @@ func main() {
 		log.Printf("warning: load .env: %v", err)
 	}
 
-	cfg, err := config.LoadConfig("config/config.yml")
+	configPath := getenv("CONFIG_PATH", "config/config.yml")
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		log.Printf("warning: load config: %v", err)
 	}
@@ -45,4 +46,11 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
+}
+
+func getenv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

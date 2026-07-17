@@ -44,3 +44,21 @@ func TestLoadRulesMissingFileReturnsNil(t *testing.T) {
 		t.Fatalf("expected nil rules for missing file, got %d", len(loaded))
 	}
 }
+
+func TestProductionRulesFileLoads(t *testing.T) {
+	loaded, err := LoadRules(filepath.Join("..", "..", "config", "rules.yml"))
+	if err != nil {
+		t.Fatalf("production rules file should load: %v", err)
+	}
+	if len(loaded) < 10 {
+		t.Fatalf("expected a production ruleset with many entries, got %d", len(loaded))
+	}
+	for _, rule := range loaded {
+		if rule.Category == "" {
+			t.Fatalf("expected rule category for %q", rule.Name)
+		}
+		if rule.Description == "" {
+			t.Fatalf("expected rule description for %q", rule.Name)
+		}
+	}
+}

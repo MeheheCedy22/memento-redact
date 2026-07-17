@@ -10,7 +10,9 @@ import (
 
 // Rule defines a redaction rule loaded from YAML.
 type Rule struct {
+	Category    string `yaml:"category" json:"category"`
 	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description" json:"description"`
 	Pattern     string `yaml:"pattern" json:"pattern"`
 	Replacement string `yaml:"replacement" json:"replacement"`
 	Enabled     bool   `yaml:"enabled" json:"enabled"`

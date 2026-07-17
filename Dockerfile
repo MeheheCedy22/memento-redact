@@ -5,6 +5,8 @@ COPY . .
 RUN go build -o /bin/memento-redact ./cmd/server
 
 FROM alpine:3.18
+WORKDIR /app
+COPY config /app/config
 COPY --from=build /bin/memento-redact /bin/memento-redact
 EXPOSE 8080
 ENTRYPOINT ["/bin/memento-redact"]

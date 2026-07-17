@@ -223,6 +223,56 @@ pre, code {
   gap: 0.8rem;
 }
 
+.rule-summary {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.rule-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.rule-summary-header h3 {
+  margin: 0;
+}
+
+.rule-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.rule-card {
+  padding: 0.8rem 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(11, 21, 40, 0.72);
+}
+
+.rule-card-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  color: #dbeafe;
+}
+
+.rule-card p {
+  margin: 0.5rem 0;
+  color: #b6c6db;
+}
+
+.rule-card code {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #b8f3da;
+}
+
 .footer-bar {
   margin-top: 1.25rem;
   padding: 0.9rem 1rem;

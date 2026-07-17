@@ -38,7 +38,18 @@ jobs:
           node-version: '20'
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build frontend
         run: npm run build
+
+  docker-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate backend and frontend containers
+        run: |
+          docker compose --project-directory ${{ github.workspace }} -f ${{ github.workspace }}/docker-compose.test.yml run --rm backend-test
+          docker compose --project-directory ${{ github.workspace }} -f ${{ github.workspace }}/docker-compose.test.yml run --rm frontend-test

@@ -12,7 +12,9 @@ type PreviewResult = {
 }
 
 type Rule = {
+  category?: string
   name: string
+  description?: string
   pattern: string
   replacement: string
   enabled: boolean
@@ -31,11 +33,12 @@ const defaultRules = JSON.stringify(
 
 function App() {
   const apiBaseUrl = useMemo(
-    () => import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:8080',
+    () => import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '/api',
     [],
   )
   const [prompt, setPrompt] = useState(defaultPrompt)
   const [rulesText, setRulesText] = useState(defaultRules)
+  const [loadedRules, setLoadedRules] = useState<Rule[]>([])
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -55,6 +58,7 @@ function App() {
       }
       const data = (await response.json()) as Rule[]
       setRulesText(JSON.stringify(data, null, 2))
+      setLoadedRules(data)
       setMessage('Loaded saved rules from the proxy.')
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'failed to load rules')
@@ -78,6 +82,7 @@ function App() {
       }
       const data = (await response.json()) as Rule[]
       setRulesText(JSON.stringify(data, null, 2))
+      setLoadedRules(data)
       setMessage('Rules saved. The proxy will use the updated rules immediately.')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'failed to save rules')
@@ -153,6 +158,28 @@ function App() {
             spellCheck={false}
             aria-label="Rules editor"
           />
+          <div className="rule-summary">
+            <div className="rule-summary-header">
+              <h3>Loaded rules</h3>
+              <span>{loadedRules.length} rules</span>
+            </div>
+            {loadedRules.length === 0 ? (
+              <p className="subtle">No rules were returned by the backend yet. Check the mounted config path in production.</p>
+            ) : (
+              <div className="rule-list">
+                {loadedRules.map((rule) => (
+                  <article key={`${rule.category ?? 'uncategorized'}:${rule.name}`} className="rule-card">
+                    <div className="rule-card-heading">
+                      <strong>{rule.name}</strong>
+                      <span>{rule.category ?? 'uncategorized'}</span>
+                    </div>
+                    <p>{rule.description ?? 'No description provided.'}</p>
+                    <code>{rule.replacement}</code>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

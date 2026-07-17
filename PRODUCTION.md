@@ -40,12 +40,16 @@ Bring up the backend and frontend stack:
 
 ```bash
 docker compose --project-directory C:\Marek\Coding\memento-redact up --build
+# or
+docker compose up --build
 ```
 
 After startup:
 
 - Backend API: `http://localhost:8080`
 - Frontend UI: `http://localhost:3000`
+- The browser UI talks to the backend through the same-origin `/api` path, which nginx proxies to the backend container.
+- The backend container runs from `/app`, where the mounted config and rules files are available.
 
 ## Health Checks
 
@@ -58,9 +62,7 @@ curl http://localhost:8080/health
 Preview a prompt with the API:
 
 ```bash
-curl -X POST http://localhost:8080/v1/preview \
-  -H "Content-Type: text/plain; charset=utf-8" \
-  --data "contact alice@example.com"
+curl -X POST http://localhost:8080/v1/preview -H "Content-Type: text/plain; charset=utf-8" --data "contact alice@example.com"
 ```
 
 ## CLI Usage
@@ -86,5 +88,6 @@ bin/memento-redact-cli preview --input "contact alice@example.com"
 ## Troubleshooting
 
 - If Docker cannot find the compose file, pass `--project-directory` as shown above.
-- If the frontend UI cannot reach the API, set `VITE_API_BASE_URL` in `web/.env` or adjust the compose build arg.
+- If the frontend UI cannot reach the API, confirm `web/nginx.conf` still proxies `/api/` to `http://backend:8080/` and that the frontend was built with `VITE_API_BASE_URL=/api`.
+- If the Rules editor shows an empty list, confirm the backend is starting in `/app` and that `/app/config/rules.yml` exists in the running backend container.
 - If provider requests fail, set `PROVIDER_URL` in `.env` and confirm the upstream service is reachable.
