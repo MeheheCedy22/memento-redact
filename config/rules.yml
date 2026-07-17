@@ -1,0 +1,8 @@
+- name: email
+  pattern: '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
+  replacement: '[REDACTED_EMAIL]'
+  enabled: true
+- name: phone
+  pattern: '\b(\+?\d[\d\-(). ]{6,}\d)\b'
+  replacement: '[REDACTED_PHONE]'
+  enabled: true

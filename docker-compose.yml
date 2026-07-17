@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  backend:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/app/config:ro
+
+  frontend:
+    build:
+      context: ./web
+      args:
+        VITE_API_BASE_URL: http://backend:8080
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"

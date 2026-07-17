@@ -1,0 +1,6 @@
+app_name: "memento-redact"
+listen_addr: ":8080"
+provider_url: ""
+max_payload_size: 1048576
+request_timeout_seconds: "15s"
+rules_path: "config/rules.yml"

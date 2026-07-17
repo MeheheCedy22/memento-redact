@@ -1,0 +1,14 @@
+services:
+  backend-test:
+    image: golang:1.20
+    working_dir: /src
+    volumes:
+      - ./:/src
+    command: go test ./...
+
+  frontend-test:
+    image: node:20-alpine
+    working_dir: /src/web
+    volumes:
+      - ./:/src
+    command: sh -lc "npm install && npm run build"
