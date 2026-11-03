@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -13,6 +14,7 @@ type Rule struct {
 	Category    string `yaml:"category" json:"category"`
 	Name        string `yaml:"name" json:"name"`
 	Description string `yaml:"description" json:"description"`
+	Matcher     string `yaml:"matcher" json:"matcher"`
 	Pattern     string `yaml:"pattern" json:"pattern"`
 	Replacement string `yaml:"replacement" json:"replacement"`
 	Enabled     bool   `yaml:"enabled" json:"enabled"`
@@ -22,8 +24,17 @@ type Rule struct {
 
 // Apply redacts input with the compiled rule if enabled.
 func (r *Rule) Apply(input string) string {
-	if r == nil || !r.Enabled || r.re == nil {
-		if r == nil || !r.Enabled || r.Pattern == "" {
+	if r == nil || !r.Enabled {
+		return input
+	}
+	if strings.EqualFold(r.Matcher, "literal") {
+		if r.Pattern == "" {
+			return input
+		}
+		return strings.ReplaceAll(input, r.Pattern, r.Replacement)
+	}
+	if r.re == nil {
+		if r.Pattern == "" {
 			return input
 		}
 		compiled, err := regexp.Compile(r.Pattern)
@@ -55,7 +66,7 @@ func LoadRules(path string) ([]*Rule, error) {
 	}
 	// compile regex
 	for _, r := range rr {
-		if r.Pattern != "" {
+		if r.Pattern != "" && !strings.EqualFold(r.Matcher, "literal") {
 			r.re = regexp.MustCompile(r.Pattern)
 		}
 	}
@@ -69,4 +80,32 @@ func SaveRules(path string, rr []*Rule) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+// EnsureSeededRules copies the default rules file to the editable rules file when needed.
+func EnsureSeededRules(currentPath, defaultPath string) error {
+	if _, err := os.Stat(currentPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	loaded, err := LoadRules(defaultPath)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepathDir(currentPath), 0o755); err != nil {
+		return err
+	}
+	return SaveRules(currentPath, loaded)
+}
+
+// filepathDir returns the directory portion of a file path, or "." when empty.
+func filepathDir(path string) string {
+	if idx := strings.LastIndexAny(path, "/\\"); idx >= 0 {
+		dir := path[:idx]
+		if dir != "" {
+			return dir
+		}
+	}
+	return "."
 }

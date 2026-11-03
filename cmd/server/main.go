@@ -11,6 +11,7 @@ import (
 
 	"github.com/marek/memento-redact/config"
 	"github.com/marek/memento-redact/internal/dotenv"
+	"github.com/marek/memento-redact/internal/rules"
 	"github.com/marek/memento-redact/internal/server"
 )
 
@@ -23,6 +24,9 @@ func main() {
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		log.Printf("warning: load config: %v", err)
+	}
+	if err := rules.EnsureSeededRules(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
+		log.Printf("warning: seed rules: %v", err)
 	}
 
 	srv := server.New(cfg)

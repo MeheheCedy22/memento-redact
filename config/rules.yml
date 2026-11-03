@@ -178,3 +178,9 @@
   pattern: '(?i)^(ssh-(?:rsa|ed25519|ecdsa|dss)\s+[A-Za-z0-9+/=]+\s+).*$'
   replacement: '$1[REDACTED_SSH_KEY]'
   enabled: true
+- category: directory-services
+  name: domain_hostname_suffix
+  description: Redact hostnames that end in the organization domain suffix while leaving private IPs untouched.
+  pattern: '\b[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.domain\.tld\b'
+  replacement: '[REDACTED_DOMAIN_HOSTNAME]'
+  enabled: true

@@ -26,6 +26,8 @@ func New(cfg *config.Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/v1/rules", makeRulesHandler(cfg, store))
+	mux.HandleFunc("/v1/rules/defaults", makeDefaultRulesHandler(cfg))
+	mux.HandleFunc("/v1/rules/reset", makeResetRulesHandler(cfg, store))
 	mux.HandleFunc("/v1/preview", makePreviewHandler(cfg, store))
 	mux.HandleFunc("/v1/proxy", makeProxyHandler(cfg, store))
 	return loggingMiddleware(mux)
@@ -136,6 +138,34 @@ func makeRulesHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 	}
 }
 
+func makeDefaultRulesHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeRules(w, loadRulesFromPath(cfg.DefaultRulesPath))
+	}
+}
+
+func makeResetRulesHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		defaults := loadRulesFromPath(cfg.DefaultRulesPath)
+		if err := rules.SaveRules(cfg.RulesPath, defaults); err != nil {
+			http.Error(w, "failed to restore defaults", http.StatusInternalServerError)
+			return
+		}
+		store.mu.Lock()
+		store.rules = defaults
+		store.mu.Unlock()
+		writeRules(w, defaults)
+	}
+}
+
 func loadRules(cfg *config.Config, store *ruleStore) []*rules.Rule {
 	store.mu.RLock()
 	if store.rules != nil {
@@ -153,6 +183,14 @@ func loadRules(cfg *config.Config, store *ruleStore) []*rules.Rule {
 	store.rules = loaded
 	store.mu.Unlock()
 	return append([]*rules.Rule(nil), loaded...)
+}
+
+func loadRulesFromPath(path string) []*rules.Rule {
+	loaded, err := rules.LoadRules(path)
+	if err != nil {
+		return []*rules.Rule{}
+	}
+	return loaded
 }
 
 func writeRules(w http.ResponseWriter, rr []*rules.Rule) {
