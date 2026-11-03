@@ -109,7 +109,7 @@ Switching rules on or off does not count as an edit. Changing a name, descriptio
 
 To skip some values, add a keep regex, for example `^(?:test|demo)$`.
 
-To test a rule, paste a sample on the **Redact** page. The preview uses your unsaved edits. The counts next to each rule and the **Map** show what every rule replaced. **Save** stores the rules for the CLI.
+To test a rule, paste a sample on the **Redact** page. The preview uses your unsaved edits. The counts next to each rule and the **Map** show what every rule replaced. To report a rule that redacts too much or too little, use **Debug** in the *Map* (see the [README](../README.md#using-it)). **Save** stores the rules for the CLI.
 
 ## Changing the factory presets
 

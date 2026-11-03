@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
+import { debugReport, escapeRegExp, reasons, type Mark, type Reason } from './debug'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
 
 const example = `PS> Get-VM | Select Name, PowerState, @{N='IP';E={$_.Guest.IPAddress -join ', '}}
@@ -17,7 +18,24 @@ JIRA_PASS=SVSIUIUFNOE890i0-x
 Owner: jane.doe@domain.tld, +420 777 123 456
 `
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const entryKey = (entry: MapEntry) => entry.token + '\u0000' + entry.original
+
+// Copies value and reports the outcome through setNote; on failure the clipboard keeps its old content.
+async function copyText(value: string, setNote: (note: string) => void) {
+  if (!navigator.clipboard) {
+    setNote('Copying needs HTTPS or localhost. Select the text and press Ctrl+C.')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(value)
+  } catch {
+    // the clipboard still holds what was copied before, often the unredacted original
+    setNote('Copy failed. Select the text and press Ctrl+C.')
+    return
+  }
+  setNote('Copied')
+  setTimeout(() => setNote(''), 2000)
+}
 
 // Marks every placeholder in the redacted text; hovering one shows what it replaced.
 function Highlighted({ text, map }: { text: string; map: MapEntry[] }) {
@@ -56,6 +74,10 @@ type Props = {
 
 export default function Workspace({ text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
   const [copyNote, setCopyNote] = useState('')
+  const [debug, setDebug] = useState(false)
+  const [reported, setReported] = useState(new Map<string, Reason>())
+  const [missed, setMissed] = useState<string[]>([])
+  const [reportNote, setReportNote] = useState('')
   const outputRef = useRef<HTMLDivElement>(null)
   const jumps = useRef(new Map<string, number>())
 
@@ -71,21 +93,30 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
   }
   const replacements = result?.map.reduce((sum, entry) => sum + entry.count, 0) ?? 0
 
-  async function copy() {
-    if (!result) return
-    if (!navigator.clipboard) {
-      setCopyNote('Copying needs HTTPS or localhost. Select the text and press Ctrl+C.')
+
+  const marks: Mark[] = (result?.map ?? []).flatMap((entry) => {
+    const reason = reported.get(entryKey(entry))
+    return reason ? [{ entry, reason }] : []
+  })
+  const report = marks.length || missed.length ? debugReport(result?.redacted ?? '', result?.map ?? [], marks, missed, draft) : ''
+
+  function mark(entry: MapEntry, reason: Reason | '') {
+    const next = new Map(reported)
+    if (reason) next.set(entryKey(entry), reason)
+    else next.delete(entryKey(entry))
+    setReported(next)
+  }
+
+  // Adds the text selected in the redacted output as a false negative.
+  function addSelection() {
+    const selection = getSelection()
+    const picked = selection?.toString().trim() ?? ''
+    if (!picked || !selection?.anchorNode || !outputRef.current?.contains(selection.anchorNode)) {
+      setReportNote('Select text in Redacted first.')
       return
     }
-    try {
-      await navigator.clipboard.writeText(result.redacted)
-    } catch {
-      // the clipboard still holds what was copied before, often the unredacted original
-      setCopyNote('Copy failed. Select the text and press Ctrl+C.')
-      return
-    }
-    setCopyNote('Copied')
-    setTimeout(() => setCopyNote(''), 2000)
+    setMissed([...missed, picked])
+    setReportNote('')
   }
 
   return (
@@ -118,7 +149,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
             {copyNote && <span className="note">{copyNote}</span>}
             <button
               className="primary"
-              onClick={copy}
+              onClick={() => result && copyText(result.redacted, setCopyNote)}
               disabled={!upToDate || !result?.redacted}
               title="Copy the redacted text. Disabled while it is out of date or a rule has an error."
             >
@@ -134,7 +165,9 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
 
       <div className="below">
         <section>
-          <h2>Rulesets</h2>
+          <div className="section-head">
+            <h2>Rulesets</h2>
+          </div>
           <div className="scroll">
             {draft.map((set, i) => (
               <fieldset key={i} className={set.enabled ? '' : 'off'}>
@@ -158,7 +191,12 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
         </section>
 
         <section>
-          <h2>Map</h2>
+          <div className="section-head">
+            <h2>Map</h2>
+            <button onClick={() => setDebug(!debug)} aria-pressed={debug} title="Mark wrong redactions and copy a report about them.">
+              Debug
+            </button>
+          </div>
           {result?.map.length ? (
             <div className="scroll">
               <table className="map">
@@ -168,11 +206,12 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                     <th>Original</th>
                     <th>Rule</th>
                     <th title="Occurrences">#</th>
+                    {debug && <th>Report</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {result.map.map((entry) => (
-                    <tr key={entry.token + '\u0000' + entry.original}>
+                    <tr key={entryKey(entry)}>
                       <td>
                         <button className="link mono" onClick={() => jumpTo(entry.token)} title="Show in the text. Click again for the next occurrence.">
                           {entry.token}
@@ -181,6 +220,18 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                       <td className="mono">{entry.original}</td>
                       <td>{entry.ruleset} › {entry.rule}</td>
                       <td>{entry.count}</td>
+                      {debug && (
+                        <td>
+                          <select value={reported.get(entryKey(entry)) ?? ''} onChange={(e) => mark(entry, e.target.value as Reason | '')} aria-label={`Report ${entry.token}`}>
+                            <option value="">—</option>
+                            {Object.entries(reasons).map(([reason, meaning]) => (
+                              <option key={reason} value={reason} title={meaning}>
+                                {reason}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -188,6 +239,37 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
             </div>
           ) : (
             <p className="muted">Each placeholder and the value it replaced.</p>
+          )}
+          {debug && (
+            <div className="debug">
+              <div className="section-head">
+                <span className="muted spacer">Pick a reason next to a wrong placeholder, or select missed text in Redacted.</span>
+                {reportNote && <span className="note">{reportNote}</span>}
+                {/* mousedown would clear the selection before the click reads it */}
+                <button onMouseDown={(e) => e.preventDefault()} onClick={addSelection} title="Report the text selected in Redacted as not redacted.">
+                  Add selection
+                </button>
+                <button
+                  onClick={() => {
+                    setReported(new Map())
+                    setMissed([])
+                    setReportNote('')
+                  }}
+                  disabled={!report}
+                >
+                  Clear report
+                </button>
+                <button className="primary" onClick={() => copyText(report, setReportNote)} disabled={!report}>
+                  Copy report
+                </button>
+              </div>
+              {report && (
+                <>
+                  <AutoTextarea className="mono" rows={1} value={report} readOnly aria-label="Debug report" />
+                  <p className="muted">It contains the values you marked and the rules' regexes. Read it before you send it.</p>
+                </>
+              )}
+            </div>
           )}
         </section>
       </div>

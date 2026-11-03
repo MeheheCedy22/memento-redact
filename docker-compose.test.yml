@@ -15,4 +15,4 @@ services:
       # keep the container's node_modules and build output out of your checkout
       - /src/web/node_modules
       - /src/web/dist
-    command: sh -c "npm ci --no-audit --no-fund && npm run build"
+    command: sh -c "npm ci --no-audit --no-fund && npm test && npm run build"

@@ -103,7 +103,8 @@ docker compose exec -T memento-redact memento-redact-cli rules import < backup.y
 
 ```bash
 go test -race ./...                 # rules, every factory preset, redaction, API
-cd web && npm ci && npm run build   # type-check and build the UI
+cd web && npm ci && npm test        # debug report builder
+npm run build                       # type-check and build the UI
 make docker                         # build the production image
 ```
 

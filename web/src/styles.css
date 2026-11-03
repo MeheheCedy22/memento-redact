@@ -83,6 +83,11 @@ button:hover:not(:disabled), .button:hover {
   border-color: var(--muted);
 }
 
+button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -311,8 +316,16 @@ fieldset.off > label, .ruleset.off .rule, .rule.off {
   opacity: 0.5;
 }
 
-.below h2 {
-  margin-bottom: 0.4rem;
+.debug {
+  margin-top: 1rem;
+}
+
+.debug .section-head {
+  flex-wrap: wrap;
+}
+
+.debug textarea {
+  margin-bottom: 0.35rem;
 }
 
 .map {

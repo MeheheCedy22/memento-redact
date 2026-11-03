@@ -14,7 +14,7 @@ run: build web
 
 test:
 	go test ./...
-	cd web && npm run build
+	cd web && npm test && npm run build
 
 docker:
 	docker build -t memento-redact:local .

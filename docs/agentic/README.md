@@ -14,6 +14,7 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
   - `App.tsx`: draft and saved rules, the live preview, the header.
   - `Workspace.tsx`: the Redact page.
   - `RulesEditor.tsx`: the Rules page.
+  - `debug.ts`: builds the debug report from the marked map entries and missed texts; tested by `debug.test.ts` (`npm test`, Node's built-in runner, excluded from `tsc`).
   - `AutoTextarea.tsx`: form fields that grow with their content.
   - `theme.ts` and the CSS variables: light and dark mode.
 
@@ -27,7 +28,7 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
 ## Validation
 
 - `gofmt -l .` (must print nothing), `go vet ./...`, `go test -race ./...`
-- `cd web && npm run build` (this runs `tsc --noEmit`)
+- `cd web && npm test && npm run build` (the build runs `tsc --noEmit`)
 - `docker build -t memento-redact:local .`, then a smoke test as in `.github/workflows/ci.yml`
 
 ## Conventions
