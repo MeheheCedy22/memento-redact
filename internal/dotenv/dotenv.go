@@ -7,6 +7,7 @@ import (
 )
 
 // Load parses a simple .env file and exports KEY=VALUE pairs into the process environment.
+// Variables already set in the environment win over the file.
 func Load(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -30,7 +31,7 @@ func Load(path string) error {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 		value = strings.Trim(value, `"'`)
-		if key != "" {
+		if _, set := os.LookupEnv(key); key != "" && !set {
 			if err := os.Setenv(key, value); err != nil {
 				return err
 			}

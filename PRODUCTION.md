@@ -1,93 +1,60 @@
-# memento-redact Production and Test Guide
+# memento-redact: running and testing
 
-This guide covers how to test `memento-redact` without installing Node or npm on the host, and how to run it as a production-style container stack.
-
-## Prerequisites
-
-- Docker Desktop or Docker Engine with `docker compose`
-- No local Go or Node installation is required for the Docker-based test flow
-
-## Configuration
-
-1. Copy `.env.example` to `.env` and adjust values for your environment.
-2. Edit `config/config.yml` for default runtime settings if you want file-based overrides.
-3. Edit `config/rules.yml` to change the redaction rules used by the proxy and UI.
-
-## Test In Docker
-
-Run the backend unit and integration-style tests in a container:
+## Run
 
 ```bash
-docker compose --project-directory C:\Marek\Coding\memento-redact -f C:\Marek\Coding\memento-redact\docker-compose.test.yml run --rm backend-test
+docker compose up -d --build        # or: docker build -t memento-redact . && docker run -d -p 127.0.0.1:8080:8080 -v memento-data:/app/data memento-redact
 ```
 
-Run the frontend build validation in a container:
+- UI and API on `http://localhost:8080` (one container; the Go server also serves the web UI).
+- Rulesets: `/app/data/rulesets.yml` on the `memento-data` volume. It is seeded once from the factory presets in the image (`/app/config/default-rulesets.yml`), so image upgrades never overwrite your rules. New presets from an upgrade appear in **Rules → + Add factory preset…** (only if you have no ruleset with that name) or via **Reset all to factory defaults**.
+- The container runs as an unprivileged user (uid 65534), has a healthcheck on `/health`, and needs no other services.
+- Published images: `ghcr.io/<owner>/memento-redact:latest` (linux/amd64 and linux/arm64), built by CI from `main` and `v*` tags.
+
+### Settings
+
+Set in the shell or in `.env` next to `docker-compose.yml` (compose substitutes them):
+
+| Variable | Default | |
+|---|---|---|
+| `PROVIDER_URL` | empty | upstream for `POST /v1/proxy` |
+| `MAX_PAYLOAD_SIZE` | `1048576` | bytes; larger requests get HTTP 413, never silently truncated |
+| `REQUEST_TIMEOUT_SECONDS` | `15s` | proxy upstream timeout (Go duration) |
+
+Paths (`RULES_PATH`, `DEFAULT_RULES_PATH`, `STATIC_DIR`, `LISTEN_ADDR`) are fixed by the image; override them only when running the binary directly.
+
+### Exposing it beyond localhost
+
+There is no authentication, and the rules list exactly the names you want to hide. Keep the default `127.0.0.1` binding, or put the container behind a reverse proxy with authentication and TLS (Caddy, Traefik, nginx) before changing the port mapping. The clipboard button needs HTTPS or localhost; over plain HTTP use Ctrl+A, Ctrl+C in the redacted panel.
+
+### Backup
+
+Use **Rules → Export saved (YAML)**, or from the host: `docker compose exec memento-redact memento-redact-cli rules export > backup.yml`. Restore with **Import file…** or `docker compose exec -T memento-redact memento-redact-cli rules import < backup.yml`.
+
+If the rules file is broken (e.g. edited by hand), the server refuses to start and names the problem, because running with no rules would pass text through unredacted. Fix the file or delete it to re-seed the presets.
+
+## Test
 
 ```bash
-docker compose --project-directory C:\Marek\Coding\memento-redact -f C:\Marek\Coding\memento-redact\docker-compose.test.yml run --rm frontend-test
+go test ./...                       # rules, every factory preset, redaction, API
+cd web && npm ci && npm run build   # type-check and build the UI
+make docker                         # build the production image
 ```
 
-Run both in sequence:
+Without Go or Node on the host:
 
 ```bash
-docker compose --project-directory C:\Marek\Coding\memento-redact -f C:\Marek\Coding\memento-redact\docker-compose.test.yml run --rm backend-test
-docker compose --project-directory C:\Marek\Coding\memento-redact -f C:\Marek\Coding\memento-redact\docker-compose.test.yml run --rm frontend-test
+docker compose -f docker-compose.test.yml run --rm backend-test
+docker compose -f docker-compose.test.yml run --rm frontend-test
 ```
 
-## Run As Production
-
-Bring up the backend and frontend stack:
+Smoke test a running instance:
 
 ```bash
-docker compose --project-directory C:\Marek\Coding\memento-redact up --build
-# or
-docker compose up --build
+curl localhost:8080/health
+curl -X POST --data "ip 8.8.8.8, mail jane@corp.com" localhost:8080/v1/preview
 ```
 
-After startup:
+## CI/CD
 
-- Backend API: `http://localhost:8080`
-- Frontend UI: `http://localhost:3000`
-- The browser UI talks to the backend through the same-origin `/api` path, which nginx proxies to the backend container.
-- The backend container runs from `/app`, where the mounted config and rules files are available.
-
-## Health Checks
-
-Backend health check:
-
-```bash
-curl http://localhost:8080/health
-```
-
-Preview a prompt with the API:
-
-```bash
-curl -X POST http://localhost:8080/v1/preview -H "Content-Type: text/plain; charset=utf-8" --data "contact alice@example.com"
-```
-
-## CLI Usage
-
-Build the CLI binary:
-
-```bash
-go build -o bin/memento-redact-cli ./cmd/cli
-```
-
-Preview a prompt through the API with the CLI:
-
-```bash
-bin/memento-redact-cli preview --input "contact alice@example.com"
-```
-
-## Operational Notes
-
-- The proxy forwards the redacted payload to the provider, not the raw input.
-- The UI and CLI both use the same backend API, so rule changes apply everywhere.
-- Keep redaction rules deterministic and review `config/rules.yml` before production use.
-
-## Troubleshooting
-
-- If Docker cannot find the compose file, pass `--project-directory` as shown above.
-- If the frontend UI cannot reach the API, confirm `web/nginx.conf` still proxies `/api/` to `http://backend:8080/` and that the frontend was built with `VITE_API_BASE_URL=/api`.
-- If the Rules editor shows an empty list, confirm the backend is starting in `/app` and that `/app/config/rules.yml` exists in the running backend container.
-- If provider requests fail, set `PROVIDER_URL` in `.env` and confirm the upstream service is reachable.
+`.github/workflows/ci.yml`: gofmt, `go vet`, `go test -race`, frontend type-check and build, then the production image is built and smoke-tested (health, redaction, UI, CLI). On `main` and `v*` tags the image is pushed to GHCR for amd64 and arm64.

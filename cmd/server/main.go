@@ -20,16 +20,17 @@ func main() {
 		log.Printf("warning: load .env: %v", err)
 	}
 
-	configPath := getenv("CONFIG_PATH", "config/config.yml")
-	cfg, err := config.LoadConfig(configPath)
+	cfg := config.Load()
+	if err := rules.EnsureSeeded(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
+		log.Fatalf("seed rulesets %s from %s: %v", cfg.RulesPath, cfg.DefaultRulesPath, err)
+	}
+	srv, err := server.New(cfg)
 	if err != nil {
-		log.Printf("warning: load config: %v", err)
+		log.Fatalf("load rulesets %s (fix the file or delete it to restore defaults): %v", cfg.RulesPath, err)
 	}
-	if err := rules.EnsureSeededRules(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
-		log.Printf("warning: seed rules: %v", err)
+	if _, err := os.Stat(cfg.StaticDir); err != nil {
+		log.Printf("web UI not found in %s (build it with: cd web && npm run build); API only", cfg.StaticDir)
 	}
-
-	srv := server.New(cfg)
 
 	httpSrv := &http.Server{
 		Addr:    cfg.ListenAddr,
@@ -37,7 +38,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("starting server on %s", cfg.ListenAddr)
+		log.Printf("starting server on %s (rulesets: %s)", cfg.ListenAddr, cfg.RulesPath)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server failed: %v", err)
 		}
@@ -50,11 +51,4 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
-}
-
-func getenv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
 }

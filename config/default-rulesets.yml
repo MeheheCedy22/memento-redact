@@ -1,0 +1,132 @@
+# memento-redact factory presets.
+# On first start this file is copied to RULES_PATH (the persistent data volume);
+# after that, edit rulesets in the web UI (Rules page) or with `memento-redact-cli rules import`.
+#
+# type: words  -> literal words/phrases, one per line, case-insensitive, whole words only
+# type: regex  -> Go RE2 regular expressions; if a regex has a capture group, only that group is redacted
+# keep         -> optional regex; matches that also match it are left untouched
+# placeholder  -> "#" becomes a number unique per distinct value: [HOST_1], [HOST_2], ...
+- name: Organization
+  description: Your own sensitive names. Replace domain.tld with your real domain and add hostnames, customers and project codenames.
+  enabled: true
+  rules:
+    - name: Hosts in our domain
+      description: The host part of any name ending in .domain.tld (web01.prod.domain.tld -> [HOST_1].[DOMAIN].[TLD]).
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)\b([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.domain\.tld\b'
+      placeholder: '[HOST_#]'
+    - name: Company domain
+      description: The domain itself, everywhere it appears. Add one line per domain.
+      enabled: true
+      type: words
+      patterns:
+        - domain.tld
+      placeholder: '[DOMAIN].[TLD]'
+    - name: Names and codenames
+      description: People, customers, short VM names, project codenames - one word or phrase per line.
+      enabled: true
+      type: words
+      patterns: []
+      placeholder: '[NAME_#]'
+- name: Network
+  description: IP and MAC addresses. Private, loopback, link-local and multicast addresses are kept because they identify nothing outside your network.
+  enabled: true
+  rules:
+    - name: Public IPv4
+      description: Keeps 10/8, 172.16/12, 192.168/16, 100.64/10, 127/8, 169.254/16, 0/8 and 224+ (multicast, netmasks like 255.255.255.0).
+      enabled: true
+      type: regex
+      patterns:
+        - '\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b'
+      keep: '^(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|2(?:2[4-9]|[3-5]\d)\.)'
+      placeholder: '[IP_#]'
+    - name: Public IPv6
+      description: Keeps link-local (fe80::), unique-local (fc00::/7) and multicast (ff00::) addresses.
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)\b(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,5})?)'
+      keep: '(?i)^(?:fe[89ab]|f[cdf])[0-9a-f]*:'
+      placeholder: '[IP_#]'
+    - name: MAC address
+      description: Off by default - MAC addresses rarely matter outside your network. Switch on if you consider them sensitive.
+      enabled: false
+      type: regex
+      patterns:
+        - '(?i)\b[0-9a-f]{2}(?:[:-][0-9a-f]{2}){5}\b'
+      placeholder: '[MAC_#]'
+- name: Personal data
+  description: Contact details that identify people.
+  enabled: true
+  rules:
+    - name: Email
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b'
+      placeholder: '[EMAIL_#]'
+    - name: Phone number
+      description: International (+420 777 123 456, +1 (555) 123-4567, +420777123456) and 3-3-3/4 grouped numbers.
+      enabled: true
+      type: regex
+      patterns:
+        - '(?:\+\d{1,3}[ -]?)?(?:\(\d{2,4}\)|\b\d{3})[ -]\d{3}[ -]\d{3,4}\b'
+        - '\+\d{9,14}\b'
+      placeholder: '[PHONE_#]'
+- name: Secrets
+  description: Passwords, tokens and keys in configs, command lines and logs. Only the value is redacted; the key name stays so the LLM still understands the text.
+  enabled: true
+  rules:
+    - name: Key-value secrets
+      description: 'Any key containing pass/pwd/secret/token/api key: JIRA_PASS=..., password: ..., "token": "...", spring.datasource.password=... Quoted values may contain spaces.'
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)\b[\w.-]*(?:pass|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)[\w.-]*"?[ \t]*[:=][ \t]*(?:"([^"\r\n]*)"|''([^''\r\n]*)''|["'']?([^\s"'',;]+))'
+      placeholder: '[SECRET_#]'
+    - name: Command-line password flags
+      description: --password x, -Password 'x', --token=x (PowerShell, PowerCLI, most CLIs).
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)(?:^|\s)--?(?:pass|password|passwd|pwd|secret|token|api-?key)(?:[ \t]+|=)("[^"]*"|''[^'']*''|[^\s"'']+)'
+      placeholder: '[SECRET_#]'
+    - name: PowerShell plain-text SecureString
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)ConvertTo-SecureString\s+(?:-String\s+)?("[^"]*"|''[^'']*'')'
+      placeholder: '[SECRET_#]'
+    - name: Auth headers
+      description: The full value of Authorization, Cookie and X-Api-Key headers.
+      enabled: true
+      type: regex
+      patterns:
+        - '(?i)\b(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie|X-Api-Key):[ \t]*([^\r\n]+)'
+      placeholder: '[SECRET_#]'
+    - name: Credentials in URLs
+      description: user:password in scheme://user:password@host.
+      enabled: true
+      type: regex
+      patterns:
+        - '://([^/\s:@]+:[^/\s@]+)@'
+      placeholder: '[CREDENTIALS_#]'
+    - name: Private keys
+      enabled: true
+      type: regex
+      patterns:
+        - '-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----'
+      placeholder: '[PRIVATE_KEY_#]'
+    - name: Well-known token formats
+      description: JWT, GitHub, AWS access key IDs, Slack and sk-... API keys.
+      enabled: true
+      type: regex
+      patterns:
+        - '\beyJ[\w-]+\.[\w-]+\.[\w-]+'
+        - '\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}'
+        - '\bAKIA[0-9A-Z]{16}\b'
+        - '\bxox[abprs]-[A-Za-z0-9-]{10,}'
+        - '\bsk-[A-Za-z0-9_-]{20,}'
+      placeholder: '[TOKEN_#]'

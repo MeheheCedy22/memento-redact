@@ -8,7 +8,8 @@ import (
 
 func TestLoadParsesKeyValuePairs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".env")
-	contents := []byte("# comment\nAPP_NAME=memento-redact\nLISTEN_ADDR=:9090\nQUOTED='hello world'\n")
+	contents := []byte("# comment\nAPP_NAME=memento-redact\nLISTEN_ADDR=:9090\nQUOTED='hello world'\nFROM_ENV=file\n")
+	t.Setenv("FROM_ENV", "env")
 	if err := os.WriteFile(path, contents, 0o644); err != nil {
 		t.Fatalf("failed to create env file: %v", err)
 	}
@@ -24,6 +25,9 @@ func TestLoadParsesKeyValuePairs(t *testing.T) {
 	}
 	if got := os.Getenv("QUOTED"); got != "hello world" {
 		t.Fatalf("unexpected QUOTED: %q", got)
+	}
+	if got := os.Getenv("FROM_ENV"); got != "env" {
+		t.Fatalf("real environment must win over .env, got %q", got)
 	}
 }
 

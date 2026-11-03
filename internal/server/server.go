@@ -3,10 +3,11 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,72 +17,90 @@ import (
 )
 
 type ruleStore struct {
-	mu    sync.RWMutex
-	rules []*rules.Rule
+	mu   sync.RWMutex
+	sets []*rules.Ruleset
 }
 
-// New creates an http.Handler that serves the memento-redact Proxy API.
-func New(cfg *config.Config) http.Handler {
-	store := &ruleStore{}
+func (s *ruleStore) get() []*rules.Ruleset {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sets
+}
+
+// New creates an http.Handler that serves the memento-redact API and, if present, the web UI.
+// It fails if the saved rulesets cannot be loaded, so a broken file never means "redact nothing".
+func New(cfg *config.Config) (http.Handler, error) {
+	sets, err := rules.Load(cfg.RulesPath)
+	if err != nil {
+		return nil, err
+	}
+	store := &ruleStore{sets: sets}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/v1/rules", makeRulesHandler(cfg, store))
-	mux.HandleFunc("/v1/rules/defaults", makeDefaultRulesHandler(cfg))
-	mux.HandleFunc("/v1/rules/reset", makeResetRulesHandler(cfg, store))
-	mux.HandleFunc("/v1/preview", makePreviewHandler(cfg, store))
-	mux.HandleFunc("/v1/proxy", makeProxyHandler(cfg, store))
-	return loggingMiddleware(mux)
+	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /v1/rulesets", makeGetRulesetsHandler(store))
+	mux.HandleFunc("PUT /v1/rulesets", makePutRulesetsHandler(cfg, store))
+	mux.HandleFunc("GET /v1/rulesets/defaults", makeDefaultRulesetsHandler(cfg))
+	mux.HandleFunc("POST /v1/rulesets/reset", makeResetRulesetsHandler(cfg, store))
+	mux.HandleFunc("POST /v1/preview", makePreviewHandler(cfg, store))
+	mux.HandleFunc("POST /v1/proxy", makeProxyHandler(cfg, store))
+	if cfg.StaticDir != "" {
+		mux.Handle("GET /", http.FileServer(http.Dir(cfg.StaticDir)))
+	}
+	// No login, so stop other websites from making the browser reset, rewrite or proxy anything.
+	return loggingMiddleware(new(http.CrossOriginProtection).Handler(mux)), nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
+// makePreviewHandler redacts a text/plain body with the saved rulesets, or a JSON body
+// {"text": "...", "rulesets": [...]} with the given (possibly unsaved) rulesets.
 func makePreviewHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-		limited := io.LimitReader(r.Body, cfg.MaxPayloadSize)
-		b, err := io.ReadAll(limited)
-		if err != nil {
-			http.Error(w, "failed to read body", http.StatusBadRequest)
+		b, ok := readBody(w, r, cfg.MaxPayloadSize)
+		if !ok {
 			return
 		}
-
-		ruleSet := loadRules(cfg, store)
-		res := redactor.Redact(string(b), ruleSet)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(res); err != nil {
-			http.Error(w, "encode error", http.StatusInternalServerError)
-			return
+		text, sets := string(b), store.get()
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			var req struct {
+				Text     string           `json:"text"`
+				Rulesets []*rules.Ruleset `json:"rulesets"`
+			}
+			if err := json.Unmarshal(b, &req); err != nil {
+				http.Error(w, "invalid preview payload: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			text = req.Text
+			if req.Rulesets != nil {
+				if err := rules.Compile(req.Rulesets); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				sets = req.Rulesets
+			}
 		}
+		writeJSON(w, redactor.Redact(text, sets))
 	}
 }
 
 func makeProxyHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 	client := &http.Client{Timeout: cfg.RequestTimeout}
 	return func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-		limited := io.LimitReader(r.Body, cfg.MaxPayloadSize)
-		b, err := io.ReadAll(limited)
-		if err != nil {
-			http.Error(w, "failed to read body", http.StatusBadRequest)
+		b, ok := readBody(w, r, cfg.MaxPayloadSize)
+		if !ok {
 			return
 		}
-
-		// Preview redaction (audit)
-		ruleSet := loadRules(cfg, store)
-		redacted := redactor.Redact(string(b), ruleSet)
-
-		// Forward to provider if configured
 		if cfg.ProviderURL == "" {
 			http.Error(w, "provider not configured", http.StatusBadGateway)
 			return
 		}
+		redacted := redactor.Redact(string(b), store.get())
 
-		// forward the captured bytes to the provider
-		req, err := http.NewRequestWithContext(r.Context(), "POST", cfg.ProviderURL, bytes.NewReader([]byte(redacted.Redacted)))
+		// forward only the redacted text to the provider
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, cfg.ProviderURL, bytes.NewReader([]byte(redacted.Redacted)))
 		if err != nil {
 			http.Error(w, "failed to create request", http.StatusInternalServerError)
 			return
@@ -100,105 +119,91 @@ func makeProxyHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 	}
 }
 
-func makeRulesHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
+// makeGetRulesetsHandler returns the saved rulesets as JSON, or as YAML with ?format=yaml.
+func makeGetRulesetsHandler(store *ruleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeRules(w, loadRules(cfg, store))
-		case http.MethodPut:
-			defer r.Body.Close()
-			var incoming []*rules.Rule
-			if err := json.NewDecoder(io.LimitReader(r.Body, cfg.MaxPayloadSize)).Decode(&incoming); err != nil {
-				http.Error(w, "invalid rules payload", http.StatusBadRequest)
-				return
-			}
-			for _, rule := range incoming {
-				if rule == nil {
-					http.Error(w, "rule cannot be null", http.StatusBadRequest)
-					return
-				}
-				if rule.Enabled && rule.Pattern != "" {
-					if _, err := regexp.Compile(rule.Pattern); err != nil {
-						http.Error(w, "invalid rule pattern: "+err.Error(), http.StatusBadRequest)
-						return
-					}
-				}
-			}
-			if err := rules.SaveRules(cfg.RulesPath, incoming); err != nil {
-				http.Error(w, "failed to save rules", http.StatusInternalServerError)
-				return
-			}
-			store.mu.Lock()
-			store.rules = incoming
-			store.mu.Unlock()
-			writeRules(w, incoming)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		if r.URL.Query().Get("format") != "yaml" {
+			writeJSON(w, store.get())
+			return
 		}
+		data, err := rules.Marshal(store.get())
+		if err != nil {
+			http.Error(w, "encode error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+		_, _ = w.Write(data)
 	}
 }
 
-func makeDefaultRulesHandler(cfg *config.Config) http.HandlerFunc {
+// makePutRulesetsHandler validates and persists a full replacement of the rulesets (JSON or YAML body).
+func makePutRulesetsHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		b, ok := readBody(w, r, cfg.MaxPayloadSize)
+		if !ok {
 			return
 		}
-		writeRules(w, loadRulesFromPath(cfg.DefaultRulesPath))
+		sets, err := rules.Parse(b)
+		if err != nil {
+			http.Error(w, "invalid rulesets: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		saveAndRespond(w, cfg, store, sets)
 	}
 }
 
-func makeResetRulesHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
+func makeDefaultRulesetsHandler(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		defaults, err := rules.Load(cfg.DefaultRulesPath)
+		if err != nil {
+			http.Error(w, "failed to load default rulesets: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		defaults := loadRulesFromPath(cfg.DefaultRulesPath)
-		if err := rules.SaveRules(cfg.RulesPath, defaults); err != nil {
-			http.Error(w, "failed to restore defaults", http.StatusInternalServerError)
-			return
-		}
-		store.mu.Lock()
-		store.rules = defaults
-		store.mu.Unlock()
-		writeRules(w, defaults)
+		writeJSON(w, defaults)
 	}
 }
 
-func loadRules(cfg *config.Config, store *ruleStore) []*rules.Rule {
-	store.mu.RLock()
-	if store.rules != nil {
-		rulesCopy := append([]*rules.Rule(nil), store.rules...)
-		store.mu.RUnlock()
-		return rulesCopy
+func makeResetRulesetsHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defaults, err := rules.Load(cfg.DefaultRulesPath)
+		if err != nil {
+			http.Error(w, "failed to load default rulesets: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		saveAndRespond(w, cfg, store, defaults)
 	}
-	store.mu.RUnlock()
+}
 
-	loaded, err := rules.LoadRules(cfg.RulesPath)
-	if err != nil {
-		return nil
-	}
+func saveAndRespond(w http.ResponseWriter, cfg *config.Config, store *ruleStore, sets []*rules.Ruleset) {
 	store.mu.Lock()
-	store.rules = loaded
-	store.mu.Unlock()
-	return append([]*rules.Rule(nil), loaded...)
+	defer store.mu.Unlock()
+	if err := rules.Save(cfg.RulesPath, sets); err != nil {
+		log.Printf("save rulesets: %v", err)
+		http.Error(w, "failed to save rulesets", http.StatusInternalServerError)
+		return
+	}
+	store.sets = sets
+	writeJSON(w, sets)
 }
 
-func loadRulesFromPath(path string) []*rules.Rule {
-	loaded, err := rules.LoadRules(path)
+// readBody reads at most limit bytes and rejects larger bodies instead of silently truncating them.
+func readBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, bool) {
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
-		return []*rules.Rule{}
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+		}
+		return nil, false
 	}
-	return loaded
+	return b, true
 }
 
-func writeRules(w http.ResponseWriter, rr []*rules.Rule) {
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	if rr == nil {
-		rr = []*rules.Rule{}
-	}
-	if err := json.NewEncoder(w).Encode(rr); err != nil {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
 		http.Error(w, "encode error", http.StatusInternalServerError)
 	}
 }

@@ -4,62 +4,30 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // Config holds runtime configuration for the proxy.
 type Config struct {
-	AppName          string        `yaml:"app_name"`
-	ListenAddr       string        `yaml:"listen_addr"`
-	ProviderURL      string        `yaml:"provider_url"`
-	MaxPayloadSize   int64         `yaml:"max_payload_size"`
-	RequestTimeout   time.Duration `yaml:"request_timeout_seconds"`
-	RulesPath        string        `yaml:"rules_path"`
-	DefaultRulesPath string        `yaml:"default_rules_path"`
+	ListenAddr       string
+	ProviderURL      string
+	MaxPayloadSize   int64
+	RequestTimeout   time.Duration
+	RulesPath        string
+	DefaultRulesPath string
+	StaticDir        string
 }
 
-// LoadConfig loads configuration from a YAML file. If the file does not exist,
-// returns a sensible default configuration.
-func LoadConfig(path string) (*Config, error) {
-	cfg := &Config{
-		AppName:          getEnv("APP_NAME", "memento-redact"),
+// Load reads configuration from environment variables (see .env.example), falling back to defaults.
+func Load() *Config {
+	return &Config{
 		ListenAddr:       getEnv("LISTEN_ADDR", ":8080"),
 		ProviderURL:      getEnv("PROVIDER_URL", ""),
-		RulesPath:        getEnv("RULES_PATH", "config/rules.yml"),
-		DefaultRulesPath: getEnv("DEFAULT_RULES_PATH", "config/default-rules.yml"),
+		RulesPath:        getEnv("RULES_PATH", "data/rulesets.yml"),
+		DefaultRulesPath: getEnv("DEFAULT_RULES_PATH", "config/default-rulesets.yml"),
+		StaticDir:        getEnv("STATIC_DIR", "web/dist"),
 		MaxPayloadSize:   parseInt64(getEnv("MAX_PAYLOAD_SIZE", "1048576"), 1<<20),
 		RequestTimeout:   parseDuration(getEnv("REQUEST_TIMEOUT_SECONDS", "15s"), 15*time.Second),
 	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return cfg, nil
-	}
-	defer f.Close()
-
-	if err := yaml.NewDecoder(f).Decode(cfg); err != nil {
-		return nil, err
-	}
-	if cfg.AppName == "" {
-		cfg.AppName = "memento-redact"
-	}
-	if cfg.ListenAddr == "" {
-		cfg.ListenAddr = ":8080"
-	}
-	if cfg.MaxPayloadSize == 0 {
-		cfg.MaxPayloadSize = 1 << 20
-	}
-	if cfg.RequestTimeout == 0 {
-		cfg.RequestTimeout = 15 * time.Second
-	}
-	if cfg.RulesPath == "" {
-		cfg.RulesPath = "config/rules.yml"
-	}
-	if cfg.DefaultRulesPath == "" {
-		cfg.DefaultRulesPath = "config/default-rules.yml"
-	}
-	return cfg, nil
 }
 
 func getEnv(key, fallback string) string {

@@ -1,22 +1,19 @@
 services:
-  backend:
+  memento-redact:
     build: .
-    env_file:
-      - .env
+    image: memento-redact:local
+    restart: unless-stopped
+    environment:
+      # Optional: upstream for POST /v1/proxy (automatic mode).
+      PROVIDER_URL: ${PROVIDER_URL:-}
+      MAX_PAYLOAD_SIZE: ${MAX_PAYLOAD_SIZE:-1048576}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-15s}
     ports:
-      - "8080:8080"
+      # Bound to localhost: the UI has no login and your rules list your sensitive names.
+      # Change to "8080:8080" only behind a reverse proxy with authentication or on a trusted network.
+      - "127.0.0.1:8080:8080"
     volumes:
-      - rules-data:/app/config
-
-  frontend:
-    build:
-      context: ./web
-      args:
-        VITE_API_BASE_URL: /api
-    depends_on:
-      - backend
-    ports:
-      - "3000:80"
+      - memento-data:/app/data
 
 volumes:
-  rules-data:
+  memento-data:

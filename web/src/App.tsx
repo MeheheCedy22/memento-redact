@@ -1,244 +1,164 @@
 import { useEffect, useMemo, useState } from 'react'
+import { api, errorText, type PreviewResult, type Ruleset } from './api'
+import RulesEditor, { hitKey } from './RulesEditor'
+import Workspace from './Workspace'
 
-type RedactionDiff = {
-  original: string
-  replacement: string
-}
-
-type PreviewResult = {
-  original: string
-  redacted: string
-  diffs: RedactionDiff[]
-}
-
-type Rule = {
-  category?: string
-  name: string
-  description?: string
-  pattern: string
-  replacement: string
-  enabled: boolean
-}
-
-const defaultPrompt = 'Hello Alice, please email alice@example.com or call +1 (555) 123-4567.'
-
-const defaultRules = JSON.stringify(
-  [
-    { name: 'email', pattern: '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})', replacement: '[REDACTED_EMAIL]', enabled: true },
-    { name: 'phone', pattern: '\\b(\\+?\\d[\\d\\-(). ]{6,}\\d)\\b', replacement: '[REDACTED_PHONE]', enabled: true },
-  ],
-  null,
-  2,
-)
+type Page = 'workspace' | 'rules'
+const pageFromHash = (): Page => (location.hash === '#/rules' ? 'rules' : 'workspace')
 
 function App() {
-  const apiBaseUrl = useMemo(
-    () => import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? '/api',
-    [],
-  )
-  const [prompt, setPrompt] = useState(defaultPrompt)
-  const [rulesText, setRulesText] = useState(defaultRules)
-  const [loadedRules, setLoadedRules] = useState<Rule[]>([])
-  const [preview, setPreview] = useState<PreviewResult | null>(null)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+  const [page, setPage] = useState(pageFromHash)
+  const [saved, setSaved] = useState<Ruleset[] | null>(null)
+  const [draft, setDraft] = useState<Ruleset[]>([])
+  const [defaults, setDefaults] = useState<Ruleset[]>([])
+  // Input text lives only in memory: it is exactly the data this tool must not leave lying around.
+  const [text, setText] = useState('')
+  const [result, setResult] = useState<(PreviewResult & { input: string; rules: Ruleset[] }) | null>(null)
+  const [previewError, setPreviewError] = useState('')
+  const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const dirty = saved !== null && JSON.stringify(saved) !== JSON.stringify(draft)
+  const upToDate = !previewError && result !== null && result.input === text && result.rules === draft
+
   useEffect(() => {
-    void loadRules()
+    const onHash = () => setPage(pageFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  async function loadRules() {
-    setBusy(true)
-    setError('')
-    try {
-      const response = await fetch(`${apiBaseUrl}/v1/rules`)
-      if (!response.ok) {
-        throw new Error(`rules load failed: ${response.status}`)
+  useEffect(() => {
+    void run(async () => {
+      const [sets, presets] = await Promise.all([api.rulesets(), api.defaults()])
+      setDefaults(presets)
+      adopt(sets, '')
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  // Live preview with the draft rules, so edits are visible before they are saved.
+  useEffect(() => {
+    if (saved === null) return
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      api
+        .preview(text, draft, controller.signal)
+        .then((res) => {
+          setResult({ ...res, input: text, rules: draft })
+          setPreviewError('')
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted) setPreviewError(errorText(error))
+        })
+    }, 250)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [text, draft, saved])
+
+  const hits = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const entry of result?.map ?? []) {
+      for (const key of [hitKey(entry.ruleset), hitKey(entry.ruleset, entry.rule)]) {
+        counts.set(key, (counts.get(key) ?? 0) + entry.count)
       }
-      const data = (await response.json()) as Rule[]
-      setRulesText(JSON.stringify(data, null, 2))
-      setLoadedRules(data)
-      setMessage('Loaded saved rules from the proxy.')
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'failed to load rules')
+    }
+    return counts
+  }, [result])
+
+  function adopt(sets: Ruleset[], message: string) {
+    setSaved(sets)
+    setDraft(sets)
+    setStatus(message ? { kind: 'ok', text: message } : null)
+  }
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true)
+    try {
+      await action()
+    } catch (error) {
+      setStatus({ kind: 'error', text: errorText(error) })
     } finally {
       setBusy(false)
     }
   }
 
-  async function saveRules() {
-    setBusy(true)
-    setError('')
-    try {
-      const parsed = JSON.parse(rulesText) as Rule[]
-      const response = await fetch(`${apiBaseUrl}/v1/rules`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed),
-      })
-      if (!response.ok) {
-        throw new Error(`rules save failed: ${response.status}`)
-      }
-      const data = (await response.json()) as Rule[]
-      setRulesText(JSON.stringify(data, null, 2))
-      setLoadedRules(data)
-      setMessage('Rules saved. The proxy will use the updated rules immediately.')
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'failed to save rules')
-    } finally {
-      setBusy(false)
+  const save = () => run(async () => adopt(await api.save(draft), 'Rules saved on the server. The CLI and proxy use them now.'))
+  const discard = () => saved && adopt(saved, 'Unsaved rule changes discarded.')
+  const reset = () => {
+    if (confirm('Replace ALL rulesets with the factory defaults?\n\nYour own words and rules will be lost. Use "Export saved (YAML)" first to keep a copy.')) {
+      void run(async () => adopt(await api.reset(), 'All rulesets reset to factory defaults.'))
+    }
+  }
+  const importYaml = (yaml: string) => {
+    if (confirm('Replace ALL rulesets with the imported file?\n\nIt is saved immediately; unsaved changes are lost.')) {
+      void run(async () => adopt(await api.importYaml(yaml), 'Rulesets imported and saved.'))
     }
   }
 
-  async function previewPrompt() {
-    setBusy(true)
-    setError('')
-    try {
-      const response = await fetch(`${apiBaseUrl}/v1/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        body: prompt,
-      })
-      if (!response.ok) {
-        throw new Error(`preview failed: ${response.status}`)
-      }
-      const data = (await response.json()) as PreviewResult
-      setPreview(data)
-      setMessage('Preview updated. Review the redacted output and diff summary below.')
-    } catch (previewError) {
-      setError(previewError instanceof Error ? previewError.message : 'failed to preview prompt')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const editor = (
+    <RulesEditor
+      draft={draft}
+      setDraft={setDraft}
+      defaults={defaults}
+      hits={hits}
+      error={previewError}
+      busy={busy}
+      onReset={reset}
+      onImport={importYaml}
+    />
+  )
 
   return (
-    <main className="shell">
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Self-hosted LLM privacy proxy</p>
-          <h1>memento-redact</h1>
-          <p className="lede">
-            Inspect prompts, edit rules, and preview deterministic redaction before traffic ever reaches a model provider.
-          </p>
-        </div>
-        <div className="status-card">
-          <span className="status-label">API</span>
-          <strong>{apiBaseUrl}</strong>
-          <span className={`status-pill ${busy ? 'busy' : 'ready'}`}>{busy ? 'Working' : 'Ready'}</span>
-        </div>
-      </section>
+    <div className="app">
+      <header className="topbar">
+        <h1 title="Self-hosted redaction proxy: remove PII and internal names before text goes to an LLM.">memento-redact</h1>
+        <nav>
+          <a href="#/" className={page === 'workspace' ? 'active' : ''} title="Redact text: original, redacted result, rulesets and map side by side.">Workspace</a>
+          <a href="#/rules" className={page === 'rules' ? 'active' : ''} title="Manage rulesets, presets, words and regexes on a full page.">Rules</a>
+        </nav>
+        <span className="spacer" />
+        {dirty ? (
+          <>
+            <span className="chip busy" title="Rule edits are already used in the preview, but not stored on the server yet.">● Unsaved rule changes</span>
+            <button onClick={save} disabled={busy} title="Store the current rules on the server (persistent volume). The CLI and proxy use them from then on.">Save rules</button>
+            <button className="secondary" onClick={discard} disabled={busy} title="Throw away rule edits since the last save and go back to the saved rules.">Discard changes</button>
+          </>
+        ) : (
+          <span className="chip ok" title="The rules in use match the rules stored on the server.">{saved ? 'Rules saved' : 'Loading…'}</span>
+        )}
+      </header>
 
-      <section className="grid">
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Prompt editor</h2>
-            <button onClick={previewPrompt} disabled={busy}>Preview redaction</button>
-          </div>
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            spellCheck={false}
-            aria-label="Prompt editor"
-          />
+      {status && (
+        <div className={`status ${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>
+          {status.text}
+          <button className="secondary small" onClick={() => setStatus(null)} title="Dismiss this message." aria-label="Dismiss">✕</button>
         </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Rules editor</h2>
-            <div className="actions">
-              <button onClick={loadRules} disabled={busy}>Reload</button>
-              <button onClick={saveRules} disabled={busy}>Save rules</button>
-            </div>
-          </div>
-          <textarea
-            value={rulesText}
-            onChange={(event) => setRulesText(event.target.value)}
-            spellCheck={false}
-            aria-label="Rules editor"
-          />
-          <div className="rule-summary">
-            <div className="rule-summary-header">
-              <h3>Loaded rules</h3>
-              <span>{loadedRules.length} rules</span>
-            </div>
-            {loadedRules.length === 0 ? (
-              <p className="subtle">No rules were returned by the backend yet. Check the mounted config path in production.</p>
-            ) : (
-              <div className="rule-list">
-                {loadedRules.map((rule) => (
-                  <article key={`${rule.category ?? 'uncategorized'}:${rule.name}`} className="rule-card">
-                    <div className="rule-card-heading">
-                      <strong>{rule.name}</strong>
-                      <span>{rule.category ?? 'uncategorized'}</span>
-                    </div>
-                    <p>{rule.description ?? 'No description provided.'}</p>
-                    <code>{rule.replacement}</code>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid lower-grid">
-        <div className="panel wide">
-          <div className="panel-header">
-            <h2>Redaction diff</h2>
-            <span className="subtle">Deterministic preview from the same API the CLI uses</span>
-          </div>
-          {preview ? (
-            <>
-              <div className="split">
-                <article>
-                  <h3>Original</h3>
-                  <pre>{preview.original}</pre>
-                </article>
-                <article>
-                  <h3>Redacted</h3>
-                  <pre className="redacted">{preview.redacted}</pre>
-                </article>
-              </div>
-              <div className="diff-list">
-                {preview.diffs.length === 0 ? (
-                  <p className="subtle">No redactions were needed.</p>
-                ) : (
-                  preview.diffs.map((diff, index) => (
-                    <div key={`${diff.original}-${index}`} className="diff-item">
-                      <span>Match {index + 1}</span>
-                      <code>{diff.original}</code>
-                      <strong>{diff.replacement}</strong>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          ) : (
-            <p className="subtle">Run a preview to inspect the full diff visualization.</p>
-          )}
-        </div>
-
-        <div className="panel side">
-          <div className="panel-header">
-            <h2>Notes</h2>
-          </div>
-          <ul className="notes">
-            <li>Rules are saved through <code>/v1/rules</code> and applied immediately.</li>
-            <li>The CLI and Web UI call the same preview and proxy endpoints.</li>
-            <li>Keep regular expressions anchored and deterministic for predictable redaction.</li>
-          </ul>
-        </div>
-      </section>
-
-      {(message || error) && (
-        <section className="footer-bar">
-          {message && <p className="success">{message}</p>}
-          {error && <p className="error">{error}</p>}
-        </section>
       )}
-    </main>
+
+      {page === 'workspace' ? (
+        <Workspace
+          text={text}
+          setText={setText}
+          result={result}
+          upToDate={upToDate}
+          previewError={previewError}
+          draft={draft}
+          setDraft={setDraft}
+          hits={hits}
+          editor={editor}
+        />
+      ) : (
+        <main className="rules-page">{editor}</main>
+      )}
+    </div>
   )
 }
 

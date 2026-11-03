@@ -1,30 +1,33 @@
 # Ruleset Guide
 
-This file summarizes the rule families used by `config/rules.yml`.
+Rulesets are bundles of rules, stored as YAML (`RULES_PATH`, seeded from `config/default-rulesets.yml`).
 
-## Generic Rules
+```yaml
+- name: Organization
+  description: shown as a hover hint
+  enabled: true
+  rules:
+    - name: Hosts in our domain
+      enabled: true
+      type: regex                 # or: words
+      patterns:
+        - '(?i)\b([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.domain\.tld\b'
+      keep: ''                    # optional regex; matching values are not redacted
+      placeholder: '[HOST_#]'     # '#' -> 1, 2, 3 per distinct value
+```
 
-- Email addresses.
-- Phone numbers.
-- Username, password, token, API key, and secret fields in JSON, YAML, or logs.
-- Authorization and Cookie headers.
-- Credentials embedded in connection strings.
+## Semantics
 
-## Service-Specific Rules
+- `words`: literal, case-insensitive, whole-word (ASCII word boundaries), longest phrase first.
+- `regex`: Go RE2. If the regex has capture groups, the first participating group is redacted, otherwise the whole match.
+- Every rule runs on the original text; overlapping matches resolve longest-first, ties to the earlier rule.
+- Same placeholder + same original value gives the same token. Numbering follows order of appearance.
 
-- Java: system properties and SSL/password flags.
-- Tomcat: manager/deployer credentials and runtime options.
-- WildFly: admin and management credentials.
-- Apache: auth headers and auth-related directives.
-- MySQL: environment variables, CLI flags, JDBC URLs.
-- OracleDB: SQL*Plus and wallet/password fields.
-- LDAP: bind passwords, URIs, and distinguished names.
-- SSH: `sshpass`, password fields, and key comments.
-- PowerShell: password parameters and plaintext secure string input.
+## Factory presets
 
-## Usage Guidance
+- **Organization**: hosts under `domain.tld`, the domain itself (`[DOMAIN].[TLD]`), an empty names/codenames list.
+- **Network**: public IPv4/IPv6 (private, loopback, link-local, CGNAT, multicast kept), MAC (off by default).
+- **Personal data**: email, phone numbers.
+- **Secrets**: key=value secrets, CLI password flags, PowerShell SecureString plaintext, auth headers, URL credentials, private keys, well-known token formats.
 
-- Keep patterns deterministic and focused on secret-bearing fields.
-- Prefer explicit capture groups so replacements preserve surrounding syntax.
-- Add regression tests whenever a rule is added or changed.
-- Validate changes with `go test ./...` and the Docker-based test stack.
+Add a case to `TestDefaultPresets` (`internal/rules/rules_test.go`) for every preset rule you add or change; the test fails if a preset rule has none.

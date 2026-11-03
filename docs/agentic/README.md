@@ -1,38 +1,26 @@
 # Agentic Notes
 
-This directory contains non-sensitive operating notes for AI-assisted maintenance of `memento-redact`.
+Non-sensitive operating notes for AI-assisted maintenance of `memento-redact`. Never store secrets, tokens, or real rule contents here.
 
-## Purpose
+## Layout
 
-- Capture project conventions that are safe to share.
-- Keep a short reference for build, test, and validation workflows.
-- Document where rules, config, and production runtime settings live.
+- `cmd/server`: HTTP server; serves the API and the built UI (`STATIC_DIR`).
+- `cmd/cli`: API client (`redact`, `preview`, `proxy`, `rules list|export|import|reset|enable|disable`).
+- `internal/rules`: Ruleset/Rule model, validation (`Compile`), matching (`Find`), YAML load/save (atomic writes), seeding.
+- `internal/redactor`: runs all enabled rules on the original text, longest match wins on overlaps, numbers tokens per placeholder, builds the map.
+- `internal/server`: handlers; refuses to start on an invalid rules file.
+- `config/default-rulesets.yml`: factory presets, copied to `RULES_PATH` on first start. Every preset rule must have a case in `TestDefaultPresets`.
+- `web/`: Vite + React + TypeScript. `Workspace.tsx` (react-grid-layout panels, Monaco editors bundled locally), `RulesEditor.tsx`, `App.tsx` (draft vs saved rules, live preview).
+- Config: environment variables only (`.env.example`); real env wins over `.env`.
 
-## Key Facts
+## Validation
 
-- Backend: Go service in `cmd/server`.
-- CLI: Go client in `cmd/cli`.
-- Frontend: Vite + React app in `web`.
-- Rules file: `config/rules.yml`.
-- Runtime config: `.env` and `config/config.yml`.
-- Production stack: `docker compose up --build` from the repo root.
+- `gofmt -l .` (must be empty), `go vet ./...`, `go test ./...`
+- `cd web && npm run build` (runs `tsc --noEmit`)
+- `docker build -t memento-redact:local .` and a smoke test as in `.github/workflows/ci.yml`
 
-## Validation Paths
+## Conventions
 
-- Go tests: `go test ./...`
-- Backend container test: `docker compose --project-directory C:\Marek\Coding\memento-redact -f C:\Marek\Coding\memento-redact\docker-compose.test.yml run --rm backend-test`
-- Frontend container test: `docker compose --project-directory C:\Marek\Coding\memento-redact -f C:\Marek\Coding\memento-redact\docker-compose.test.yml run --rm frontend-test`
-
-## Ruleset Areas
-
-- Generic identifiers and credentials.
-- Java application launch flags.
-- Tomcat and WildFly runtime secrets.
-- Apache request headers and auth directives.
-- MySQL, Oracle, LDAP, SSH, and PowerShell command-line secrets.
-
-## Notes for Future Updates
-
-- Keep any agent-specific notes non-sensitive.
-- Never store secrets, tokens, or provider credentials here.
-- Prefer short, explicit examples over large data dumps.
+- Keep the UI same-origin; no CDN assets (Monaco is bundled, never loaded from a CDN).
+- Input text is never persisted or logged; only rules are stored.
+- Rule changes must keep the preview/CLI/proxy behaviour identical: all three use `redactor.Redact`.

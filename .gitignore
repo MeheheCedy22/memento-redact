@@ -25,6 +25,9 @@ go.work.sum
 # env file
 .env
 
+# local rulesets written by the server (RULES_PATH)
+data/
+
 # frontend build outputs
 web/node_modules/
 web/dist/

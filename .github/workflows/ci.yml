@@ -3,25 +3,24 @@ name: ci
 on:
   push:
     branches: ["main"]
+    tags: ["v*"]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
-
-      - name: Test Go backend
-        run: go test ./...
-
-      - name: Build Go backend
-        run: go build ./cmd/server
+          go-version-file: go.mod
+      - name: Check formatting
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - run: go vet ./...
+      - run: go test -race ./...
 
   frontend:
     runs-on: ubuntu-latest
@@ -29,27 +28,71 @@ jobs:
       run:
         working-directory: web
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build frontend
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Type-check and build
         run: npm run build
 
-  docker-validation:
+  # Builds the production image, smoke-tests it, and publishes it to GHCR for main and v* tags.
+  image:
+    needs: [backend, frontend]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Validate backend and frontend containers
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: memento-redact:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
         run: |
-          docker compose --project-directory ${{ github.workspace }} -f ${{ github.workspace }}/docker-compose.test.yml run --rm backend-test
-          docker compose --project-directory ${{ github.workspace }} -f ${{ github.workspace }}/docker-compose.test.yml run --rm frontend-test
+          docker run -d --name smoke -p 8080:8080 memento-redact:ci
+          for i in $(seq 1 30); do curl -fs localhost:8080/health && break; sleep 1; done
+          test "$(curl -fs -X POST --data 'ip 8.8.8.8 and 10.0.0.1' localhost:8080/v1/preview | jq -r .redacted)" = "ip [IP_1] and 10.0.0.1"
+          curl -fs localhost:8080/ | grep -q '<div id="root">'
+          docker exec smoke memento-redact-cli rules list | grep -q Network
+          docker rm -f smoke
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-arch image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

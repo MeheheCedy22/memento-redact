@@ -1,14 +1,18 @@
+# Run the test suites without Go or Node on the host.
 services:
   backend-test:
-    image: golang:1.20
+    image: golang:1.26-alpine
     working_dir: /src
     volumes:
       - ./:/src
     command: go test ./...
 
   frontend-test:
-    image: node:20-alpine
+    image: node:24-alpine
     working_dir: /src/web
     volumes:
       - ./:/src
-    command: sh -lc "npm ci && npm run build"
+      # keep the container's node_modules and build output out of your checkout
+      - /src/web/node_modules
+      - /src/web/dist
+    command: sh -c "npm ci --no-audit --no-fund && npm run build"
