@@ -141,7 +141,15 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
                     spellCheck={false}
                     aria-label="Patterns"
                   />
-                  <input className="mono" value={rule.placeholder} onChange={(e) => change({ placeholder: e.target.value })} aria-label="Placeholder" />
+                  <div className="stack">
+                    <input className="mono" value={rule.placeholder} onChange={(e) => change({ placeholder: e.target.value })} aria-label="Placeholder" />
+                    {rule.placeholder.includes('.') && (
+                      <label className="option" title="Number each dot-separated part by its own value: acme.sk → [DOMAIN_1].[TLD_1], acme.com → [DOMAIN_1].[TLD_2]. Off: every value gets the same placeholder.">
+                        <input type="checkbox" checked={rule.per_part ?? false} onChange={(e) => change({ per_part: e.target.checked })} />
+                        Number each part
+                      </label>
+                    )}
+                  </div>
                   <AutoTextarea className="mono" rows={1} value={rule.keep ?? ''} placeholder="regex" onChange={(e) => change({ keep: oneLine(e.target.value) })} aria-label="Keep regex" />
                   <button className="danger" onClick={() => setDraft(updateSet(draft, i, { rules: set.rules.filter((_, j) => j !== k) }))} aria-label={`Delete rule ${rule.name}`} title="Delete rule">
                     ✕
@@ -161,6 +169,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
           <li><b>words</b>: literal text, one per line, case-insensitive, whole words only.</li>
           <li><b>regex</b>: Go RE2, no lookarounds. With a group <code>( )</code> only the group is replaced: <code>password=(\S+)</code> → <code>password=[SECRET_1]</code>.</li>
           <li><b>Placeholder</b>: <code>#</code> becomes a number per distinct value; repeats keep their number. Without <code>#</code> every value gets the same text.</li>
+          <li><b>Number each part</b> (placeholders with dots): each part is numbered by its own value, so <code>acme.sk</code> → <code>[DOMAIN_1].[TLD_1]</code> and <code>acme.com</code> → <code>[DOMAIN_1].[TLD_2]</code>.</li>
           <li><b>Keep</b>: matched values that also match this regex stay as they are.</li>
           <li>When matches overlap, the longest wins.</li>
           <li>Unedited presets update automatically after an upgrade. Edited ones show <i>Update available</i>.</li>

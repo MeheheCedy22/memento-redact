@@ -28,6 +28,7 @@ type span struct {
 	order      int
 	set, rule  string
 	ph         string
+	perPart    bool
 }
 
 // Redact replaces every match of the enabled rules with placeholder tokens.
@@ -45,7 +46,7 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 				continue
 			}
 			for _, m := range r.Find(text) {
-				spans = append(spans, span{start: m[0], end: m[1], order: len(spans), set: set.Name, rule: r.Name, ph: r.Placeholder})
+				spans = append(spans, span{start: m[0], end: m[1], order: len(spans), set: set.Name, rule: r.Name, ph: r.Placeholder, perPart: r.PerPart})
 			}
 		}
 	}
@@ -73,6 +74,7 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 	res := Result{Map: []Entry{}}
 	index := map[[2]string]int{}
 	counters := map[string]int{}
+	parts := partNumbering{next: map[string]int{}, of: map[[2]string]int{}}
 	var b strings.Builder
 	last := 0
 	for _, s := range kept {
@@ -80,8 +82,14 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 		key := [2]string{s.ph, original}
 		i, ok := index[key]
 		if !ok {
-			counters[s.ph]++
-			token := strings.ReplaceAll(s.ph, "#", strconv.Itoa(counters[s.ph]))
+			token := ""
+			if s.perPart {
+				token = parts.token(s.ph, original)
+			}
+			if token == "" {
+				counters[s.ph]++
+				token = strings.ReplaceAll(s.ph, "#", strconv.Itoa(counters[s.ph]))
+			}
 			i = len(res.Map)
 			index[key] = i
 			res.Map = append(res.Map, Entry{Token: token, Original: original, Ruleset: s.set, Rule: s.rule})
@@ -94,6 +102,45 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 	b.WriteString(text[last:])
 	res.Redacted = b.String()
 	return res
+}
+
+// partNumbering numbers placeholder parts by their own value, case-insensitively.
+type partNumbering struct {
+	next map[string]int    // placeholder part -> last number given
+	of   map[[2]string]int // (placeholder part, value part) -> number
+}
+
+// token fills each dot-separated part of ph with the number of the matching part of original:
+// [DOMAIN].[TLD] gives acme.sk -> [DOMAIN_1].[TLD_1], acme.com -> [DOMAIN_1].[TLD_2].
+// Extra leading labels belong to the first part (corp.acme.sk -> DOMAIN "corp.acme").
+// It returns "" when original has fewer parts than ph.
+func (p *partNumbering) token(ph, original string) string {
+	tmpl := strings.Split(ph, ".")
+	vals := strings.Split(original, ".")
+	if len(tmpl) < 2 || len(vals) < len(tmpl) {
+		return ""
+	}
+	extra := len(vals) - len(tmpl)
+	vals = append([]string{strings.Join(vals[:extra+1], ".")}, vals[extra+1:]...)
+	for i, part := range tmpl {
+		key := [2]string{part, strings.ToLower(vals[i])}
+		n, ok := p.of[key]
+		if !ok {
+			p.next[part]++
+			n = p.next[part]
+			p.of[key] = n
+		}
+		num := strconv.Itoa(n)
+		switch {
+		case strings.Contains(part, "#"):
+			tmpl[i] = strings.ReplaceAll(part, "#", num)
+		case strings.HasSuffix(part, "]"):
+			tmpl[i] = part[:len(part)-1] + "_" + num + "]"
+		default:
+			tmpl[i] = part + "_" + num
+		}
+	}
+	return strings.Join(tmpl, ".")
 }
 
 func free(taken []bool, start, end int) bool {

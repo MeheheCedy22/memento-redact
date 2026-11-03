@@ -6,6 +6,8 @@ export type Rule = {
   patterns: string[]
   keep?: string
   placeholder: string
+  // number each dot-separated placeholder part by its own value
+  per_part?: boolean
 }
 
 export type Ruleset = {

@@ -24,7 +24,7 @@ Rules live in the `memento-data` volume and survive restarts and image upgrades.
 
 ## Using it
 
-1. **Redact**: paste text into *Original*. *Redacted* updates as you type. Hover a highlighted placeholder to see what it replaced, then **Copy**.
+1. **Redact**: paste text into *Original*. *Redacted* updates as you type. Hover a highlighted placeholder to see what it replaced; click a placeholder in the *Map* to jump to it in the text (click again for the next occurrence). Then **Copy**.
 2. Something is not redacted? On the **Rules** page put words or phrases one per line in *Organization → Names and codenames*, or add a regex rule. The preview applies your edits immediately.
 3. **Save** stores the rules on the server; **Discard** goes back to the last save. **Restore preset** resets one ruleset, **Reset all** resets everything, **Export/Import** gives you a YAML backup.
 
@@ -37,6 +37,7 @@ First thing to do: on the **Rules** page, replace `domain.tld` in the *Organizat
 | `type: words` | literal words/phrases, one per line, case-insensitive, whole words only |
 | `type: regex` | Go RE2 regexes (no lookarounds). With a capture group, only the group is redacted: `password=(\S+)` gives `password=[SECRET_1]` |
 | `placeholder` | `#` becomes a number per distinct value (`[HOST_#]`). Without `#`, every value gets the same fixed text |
+| `per_part` | for placeholders with dots: number each part by its own value, `acme.sk` → `[DOMAIN_1].[TLD_1]`, `acme.com` → `[DOMAIN_1].[TLD_2]` (*Number each part* in the UI; on for *Company domain*) |
 | `keep` | optional regex; matched values that also match it are left untouched |
 
 All rules run against the original text. When matches overlap, the longest wins. Values that only reference something (`$VAR`, `${VAR}`, `$(command)`, `%VAR%`, `{{ template }}`) are kept by the presets' *keep* regex, since the secret is not in the text; a default (`${VAR:-literal}`) or a literal echoed inside `$(echo …)` is still redacted. Factory presets: [config/default-rulesets.yml](config/default-rulesets.yml).

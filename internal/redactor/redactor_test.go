@@ -50,6 +50,26 @@ func TestRedactLongestOverlapWinsAndDisabledSetsAreSkipped(t *testing.T) {
 	}
 }
 
+func TestRedactPerPartNumbersDomainAndTLDSeparately(t *testing.T) {
+	rule := &rules.Rule{Name: "domains", Enabled: true, Type: "words", Patterns: []string{"acme.sk", "contoso.com", "acme.com", "corp.acme.sk"}, Placeholder: "[DOMAIN].[TLD]", PerPart: true}
+	rs := sets(t, &rules.Ruleset{Name: "org", Enabled: true, Rules: []*rules.Rule{rule}})
+	res := Redact("acme.sk contoso.com acme.com ACME.SK corp.acme.sk", rs)
+	if want := "[DOMAIN_1].[TLD_1] [DOMAIN_2].[TLD_2] [DOMAIN_1].[TLD_2] [DOMAIN_1].[TLD_1] [DOMAIN_3].[TLD_1]"; res.Redacted != want {
+		t.Fatalf("got %q, want %q", res.Redacted, want)
+	}
+
+	rule.Placeholder = "[D#].[T#]"
+	if got := Redact("contoso.com acme.sk", rs).Redacted; got != "[D1].[T1] [D2].[T2]" {
+		t.Fatalf("# inside parts: %q", got)
+	}
+
+	rule.PerPart = false
+	rule.Placeholder = "[DOMAIN].[TLD]"
+	if got := Redact("acme.sk contoso.com", rs).Redacted; got != "[DOMAIN].[TLD] [DOMAIN].[TLD]" {
+		t.Fatalf("switched off: one fixed placeholder expected, got %q", got)
+	}
+}
+
 func TestRedactEmptyInputAndNoRules(t *testing.T) {
 	if res := Redact("", nil); res.Redacted != "" || res.Map == nil || len(res.Map) != 0 {
 		t.Fatalf("unexpected result: %+v", res)
@@ -72,10 +92,10 @@ PS> Connect-VIServer vcenter.domain.tld -User admin@domain.tld -Password 'S3cr3t
 Contact jane.doe@domain.tld or +420 777 123 456. Again: web01.prod.domain.tld 203.0.113.17`
 	want := `Name                   PowerState IP
 ----                   ---------- --
-[HOST_1].[DOMAIN].[TLD]  PoweredOn  10.20.30.41, fe80::250:56ff:fe9a:1b2c
-[HOST_2].[DOMAIN].[TLD]     PoweredOn  192.168.1.1, [IP_1]
-PS> Connect-VIServer [HOST_3].[DOMAIN].[TLD] -User [EMAIL_1] -Password [SECRET_1]
-Contact [EMAIL_2] or [PHONE_1]. Again: [HOST_1].[DOMAIN].[TLD] [IP_1]`
+[HOST_1].[DOMAIN_1].[TLD_1]  PoweredOn  10.20.30.41, fe80::250:56ff:fe9a:1b2c
+[HOST_2].[DOMAIN_1].[TLD_1]     PoweredOn  192.168.1.1, [IP_1]
+PS> Connect-VIServer [HOST_3].[DOMAIN_1].[TLD_1] -User [EMAIL_1] -Password [SECRET_1]
+Contact [EMAIL_2] or [PHONE_1]. Again: [HOST_1].[DOMAIN_1].[TLD_1] [IP_1]`
 	res := Redact(in, rs)
 	if res.Redacted != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", res.Redacted, want)

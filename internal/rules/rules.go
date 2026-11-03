@@ -38,6 +38,9 @@ type Rule struct {
 	Keep string `yaml:"keep,omitempty" json:"keep,omitempty"`
 	// Placeholder replaces each value; "#" becomes a number that is unique per distinct value.
 	Placeholder string `yaml:"placeholder" json:"placeholder"`
+	// PerPart numbers each dot-separated part of the placeholder by its own value:
+	// [DOMAIN].[TLD] gives acme.sk -> [DOMAIN_1].[TLD_1], acme.com -> [DOMAIN_1].[TLD_2].
+	PerPart bool `yaml:"per_part,omitempty" json:"per_part,omitempty"`
 
 	re   *regexp.Regexp
 	keep *regexp.Regexp

@@ -21,12 +21,13 @@
         - '(?i)\b([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.domain\.tld\b'
       placeholder: '[HOST_#]'
     - name: Company domain
-      description: The domain itself. One per line.
+      description: The domain itself, one per line. Each part is numbered, so acme.sk and contoso.com stay distinguishable.
       enabled: true
       type: words
       patterns:
         - domain.tld
       placeholder: '[DOMAIN].[TLD]'
+      per_part: true
     - name: Names and codenames
       description: People, customers, short VM names, projects. One per line.
       enabled: true

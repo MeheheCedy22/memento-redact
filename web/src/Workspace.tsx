@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
@@ -33,7 +33,7 @@ function Highlighted({ text, map }: { text: string; map: MapEntry[] }) {
     const entries = byToken.get(match[0]) ?? []
     parts.push(text.slice(last, at))
     parts.push(
-      <mark key={at} title={entries.map((e) => `${e.original}\n${e.ruleset} › ${e.rule}`).join('\n\n')}>
+      <mark key={at} data-token={match[0]} title={entries.map((e) => `${e.original}\n${e.ruleset} › ${e.rule}`).join('\n\n')}>
         {match[0]}
       </mark>,
     )
@@ -56,6 +56,19 @@ type Props = {
 
 export default function Workspace({ text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
   const [copyNote, setCopyNote] = useState('')
+  const outputRef = useRef<HTMLDivElement>(null)
+  const jumps = useRef(new Map<string, number>())
+
+  // Scrolls the text pair to the next occurrence of token in the redacted text and outlines it.
+  function jumpTo(token: string) {
+    const marks = [...(outputRef.current?.querySelectorAll('mark') ?? [])].filter((m) => m.dataset.token === token)
+    if (marks.length === 0) return
+    const i = ((jumps.current.get(token) ?? -1) + 1) % marks.length
+    jumps.current.set(token, i)
+    outputRef.current?.querySelector('mark.current')?.classList.remove('current')
+    marks[i].classList.add('current')
+    marks[i].scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }
   const replacements = result?.map.reduce((sum, entry) => sum + entry.count, 0) ?? 0
 
   async function copy() {
@@ -107,7 +120,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
             </button>
           </div>
           {previewError && <p className="error" role="alert">Not redacted: {previewError}</p>}
-          <div className={`output mono ${upToDate ? '' : 'stale'}`} aria-label="Redacted text" aria-live="polite">
+          <div ref={outputRef} className={`output mono ${upToDate ? '' : 'stale'}`} aria-label="Redacted text" aria-live="polite">
             {result?.redacted ? <Highlighted text={result.redacted} map={result.map} /> : <span className="muted">The redacted text appears here.</span>}
           </div>
         </section>
@@ -154,7 +167,11 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                 <tbody>
                   {result.map.map((entry) => (
                     <tr key={entry.token + '\u0000' + entry.original}>
-                      <td className="mono">{entry.token}</td>
+                      <td>
+                        <button className="link mono" onClick={() => jumpTo(entry.token)} title="Show in the text. Click again for the next occurrence.">
+                          {entry.token}
+                        </button>
+                      </td>
                       <td className="mono">{entry.original}</td>
                       <td>{entry.ruleset} › {entry.rule}</td>
                       <td>{entry.count}</td>

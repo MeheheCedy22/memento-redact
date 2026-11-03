@@ -15,6 +15,7 @@ Rulesets are bundles of rules, stored as YAML (`RULES_PATH`, seeded from `config
         - '(?i)\b([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.domain\.tld\b'
       keep: ''                    # optional regex; matching values are not redacted
       placeholder: '[HOST_#]'     # '#' -> 1, 2, 3 per distinct value
+      per_part: false             # true: number each dot-separated part ([DOMAIN].[TLD] -> [DOMAIN_1].[TLD_2])
 ```
 
 ## Semantics
@@ -23,6 +24,7 @@ Rulesets are bundles of rules, stored as YAML (`RULES_PATH`, seeded from `config
 - `regex`: Go RE2. If the regex has capture groups, the first participating group is redacted, otherwise the whole match.
 - Every rule runs on the original text; overlapping matches resolve longest-first, ties to the earlier rule.
 - Same placeholder + same original value gives the same token. Numbering follows order of appearance.
+- `per_part: true` splits placeholder and value at dots and numbers each part by its own value (case-insensitive), extra leading labels go to the first part: `[DOMAIN].[TLD]` gives `acme.sk` -> `[DOMAIN_1].[TLD_1]`, `acme.com` -> `[DOMAIN_1].[TLD_2]`, `corp.acme.sk` -> `[DOMAIN_2].[TLD_1]`. Values with fewer parts fall back to the plain placeholder.
 - Upgrades (`rules.Sync` on start): a preset whose content still matches its `preset` fingerprint is replaced by the new factory version, keeping on/off switches. Edited presets and unstamped rulesets are never touched.
 
 ## What the presets cover, and why
