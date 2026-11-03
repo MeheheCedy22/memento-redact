@@ -202,6 +202,7 @@ func TestDefaultPresets(t *testing.T) {
 		{"Company domain", "web01.domain.tld mail@Domain.TLD notdomain.tld", []string{"domain.tld", "Domain.TLD"}},
 		{"Names and codenames", "nothing configured yet", nil},
 		{"Public IPv4", "10.1.2.3 172.16.0.1 172.32.0.1 192.168.1.1 100.64.0.1 127.0.0.1 169.254.1.1 255.255.255.0 224.0.0.1 8.8.8.8 203.0.113.17 999.1.1.1", []string{"172.32.0.1", "8.8.8.8", "203.0.113.17"}},
+		{"Public IPv4", "build 4.2.0.0.1, OID 1.3.6.1.4.1.311, dns 8.8.4.4. proxy 1.2.3.4:443", []string{"8.8.4.4", "1.2.3.4"}},
 		{"Public IPv6", "2001:db8:85a3::8a2e:370:7334 fe80::250:56ff:fe9a:1b2c fd00::1 ff02::1 12:30:45 00:50:56:9a:1b:2c 2001:0db8:0000:0000:0000:ff00:0042:8329", []string{"2001:db8:85a3::8a2e:370:7334", "2001:0db8:0000:0000:0000:ff00:0042:8329"}},
 		{"MAC address", "00:50:56:9a:1b:2c and 00-50-56-9A-1B-2C", []string{"00:50:56:9a:1b:2c", "00-50-56-9A-1B-2C"}},
 		{"Email", "mail jane.doe+x@corp.example.com now", []string{"jane.doe+x@corp.example.com"}},

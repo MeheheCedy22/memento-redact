@@ -40,12 +40,13 @@
   enabled: true
   rules:
     - name: Public IPv4
-      description: Keeps private, loopback, link-local, CGNAT, multicast and netmasks.
+      description: Keeps private, loopback, link-local, CGNAT, multicast, netmasks, and versions or OIDs with more than four parts.
       enabled: true
       type: regex
       patterns:
-        - '\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b'
-      keep: '^(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|2(?:2[4-9]|[3-5]\d)\.)'
+        # takes the whole run of dotted numbers, so 1.2.3.4.5 is one value (kept below), not an address plus ".5"
+        - '\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?:\.\d+)*\b'
+      keep: '^(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|2(?:2[4-9]|[3-5]\d)\.)|^\d+(?:\.\d+){4}'
       placeholder: '[IP_#]'
     - name: Public IPv6
       description: Keeps link-local, unique-local and multicast.

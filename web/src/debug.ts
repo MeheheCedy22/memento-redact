@@ -7,10 +7,11 @@ export const reasons = {
   'too little': 'part of the sensitive value stays visible',
   'wrong type': 'right to redact, but the wrong rule or placeholder',
   'wrong number': 'one value got several numbers, or several values share one',
-  other: 'something else',
+  custom: 'describe it yourself',
 }
 export type Reason = keyof typeof reasons
-export type Mark = { entry: MapEntry; reason: Reason }
+// note is the description for the custom reason
+export type Mark = { entry: MapEntry; reason: Reason; note?: string }
 
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -34,9 +35,10 @@ export function debugReport(redacted: string, map: MapEntry[], marks: Mark[], mi
 
   const out = ['memento-redact debug report', '']
   let n = 0
-  for (const { entry, reason } of marks) {
+  for (const { entry, reason, note } of marks) {
     const rule = sets.find((s) => s.name === entry.ruleset)?.rules.find((r) => r.name === entry.rule)
-    out.push(`${++n}. ${reason} (${reasons[reason]}): ${entry.token} = ${JSON.stringify(entry.original)}, ${entry.count}x`)
+    const why = reason === 'custom' ? note?.trim() || 'no description' : reasons[reason]
+    out.push(`${++n}. ${reason} (${why}): ${entry.token} = ${JSON.stringify(entry.original)}, ${entry.count}x`)
     out.push(`   rule: ${entry.ruleset} › ${entry.rule}` + (rule ? `, ${rule.type}, placeholder ${rule.placeholder}${rule.per_part ? ', number each part' : ''}` : ''))
     // a words list is your list of sensitive names, so only regexes go into the report
     if (rule?.type === 'regex') {

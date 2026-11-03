@@ -30,7 +30,7 @@ Rules live in the `memento-data` volume and survive restarts and upgrades. The p
 2. **Something is not redacted?** Add the word to *Organization → Names and codenames*, or add a regex rule on the **Rules** page. The preview uses your edits right away.
 3. **Save** stores the rules on the server, for the CLI too. **Discard** goes back to the last save. **Restore preset** resets one ruleset, **Reset all** resets everything, and **Export** / **Import…** move the rules as YAML.
 
-4. **Report a wrong redaction**: click **Debug** in the *Map*. Pick a reason next to a wrong placeholder (false positive, too much, too little, wrong type, wrong number, other). To report text that was not redacted, select it in *Redacted* and click **Add selection**. Then click **Copy report**. The report lists each item with its rule and the lines it occurs in. Only the values you marked are restored; everything else stays redacted.
+4. **Report a wrong redaction**: click **Debug** in the *Map*. Pick a reason next to a wrong placeholder (false positive, too much, too little, wrong type, wrong number, or custom with your own description). To report text that was not redacted, select it in *Redacted* and click **Add selection**. Then click **Copy report**. The report lists each item with its rule and the lines it occurs in. Only the values you marked are restored; everything else stays redacted.
 
 ```bash
 memento-redact-cli redact < app.log > redacted.txt

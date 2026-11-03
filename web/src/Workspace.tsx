@@ -75,7 +75,7 @@ type Props = {
 export default function Workspace({ text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
   const [copyNote, setCopyNote] = useState('')
   const [debug, setDebug] = useState(false)
-  const [reported, setReported] = useState(new Map<string, Reason>())
+  const [reported, setReported] = useState(new Map<string, Omit<Mark, 'entry'>>())
   const [missed, setMissed] = useState<string[]>([])
   const [reportNote, setReportNote] = useState('')
   const outputRef = useRef<HTMLDivElement>(null)
@@ -95,14 +95,14 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
 
 
   const marks: Mark[] = (result?.map ?? []).flatMap((entry) => {
-    const reason = reported.get(entryKey(entry))
-    return reason ? [{ entry, reason }] : []
+    const marked = reported.get(entryKey(entry))
+    return marked ? [{ entry, ...marked }] : []
   })
   const report = marks.length || missed.length ? debugReport(result?.redacted ?? '', result?.map ?? [], marks, missed, draft) : ''
 
-  function mark(entry: MapEntry, reason: Reason | '') {
+  function mark(entry: MapEntry, reason: Reason | '', note = reported.get(entryKey(entry))?.note) {
     const next = new Map(reported)
-    if (reason) next.set(entryKey(entry), reason)
+    if (reason) next.set(entryKey(entry), { reason, note })
     else next.delete(entryKey(entry))
     setReported(next)
   }
@@ -222,7 +222,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                       <td>{entry.count}</td>
                       {debug && (
                         <td>
-                          <select value={reported.get(entryKey(entry)) ?? ''} onChange={(e) => mark(entry, e.target.value as Reason | '')} aria-label={`Report ${entry.token}`}>
+                          <select value={reported.get(entryKey(entry))?.reason ?? ''} onChange={(e) => mark(entry, e.target.value as Reason | '')} aria-label={`Report ${entry.token}`}>
                             <option value="">—</option>
                             {Object.entries(reasons).map(([reason, meaning]) => (
                               <option key={reason} value={reason} title={meaning}>
@@ -230,6 +230,15 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                               </option>
                             ))}
                           </select>
+                          {reported.get(entryKey(entry))?.reason === 'custom' && (
+                            <AutoTextarea
+                              rows={1}
+                              value={reported.get(entryKey(entry))?.note ?? ''}
+                              onChange={(e) => mark(entry, 'custom', e.target.value.replace(/\r?\n/g, ' '))}
+                              placeholder="What is wrong?"
+                              aria-label={`What is wrong with ${entry.token}`}
+                            />
+                          )}
                         </td>
                       )}
                     </tr>

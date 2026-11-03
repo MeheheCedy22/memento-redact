@@ -320,6 +320,10 @@ fieldset.off > label, .ruleset.off .rule, .rule.off {
   margin-top: 1rem;
 }
 
+.map textarea {
+  margin-top: 0.25rem;
+}
+
 .debug .section-head {
   flex-wrap: wrap;
 }
