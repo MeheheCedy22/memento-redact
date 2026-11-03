@@ -437,6 +437,21 @@ fieldset.off > label, .ruleset.off .rule, .rule.off {
 
 .help {
   color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+
+.help table {
+  border-collapse: collapse;
+  margin: 0.4rem 0;
+}
+
+.help td {
+  padding: 0.15rem 1rem 0.15rem 0;
+  vertical-align: top;
+}
+
+.help td:first-child {
+  white-space: nowrap;
 }
 
 .help summary {

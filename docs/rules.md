@@ -49,6 +49,36 @@ The server checks every rule before it saves or previews: names are present, `ty
 - **All rules run on the original text**, so no rule ever matches inside another rule's placeholder.
 - **Overlaps**: when matches overlap, the longest wins. For equal lengths, the rule higher in the list wins (rulesets top to bottom, then rules top to bottom).
 
+## Regex cheat sheet
+
+The same sheet is on the Rules page under **Regex cheat sheet**.
+
+| Syntax | Meaning |
+|---|---|
+| `(?i)` | at the start: ignore upper and lower case |
+| `.` | any character except a line break |
+| `\.` `\(` `\[` `\\` | a literal dot, bracket, backslash: put `\` before any of `. * + ? ( ) [ ] { } \| ^ $ \` |
+| `\d` `\w` `\s` | a digit · a letter, digit or `_` · whitespace, including line breaks. Uppercase means "not": `\S` is not whitespace |
+| `\p{L}` | any letter, including á, č, ž (`\w` is ASCII only) |
+| `[abc]` `[a-z0-9-]` | one character from the set |
+| `[^"\n]` | one character not in the set (here: not a quote, not a line break) |
+| `*` `+` `?` | what comes before, 0 or more · 1 or more · 0 or 1 times |
+| `{3}` `{2,4}` `{8,}` | exactly 3 · 2 to 4 · 8 or more times |
+| `*?` `+?` | as few times as possible |
+| `a\|b` | a or b |
+| `\b` | word boundary: `\bweb01\b` does not match inside `myweb01x` (ASCII letters only) |
+| `^` `$` | start and end of the value; use them in Keep |
+| `( )` | group: only this part is replaced |
+| `(?: )` | group for `\|` or repeats that does not change what is replaced |
+
+In this project:
+
+- Each line in *Patterns* is its own regex.
+- Only the first group that matched is replaced: `(?i)\bcustomer_id=(\w+)` gives `customer_id=[CUSTOMER_1]`. Without a group, the whole match is replaced.
+- *Keep* is tested against the replaced part only. Anchor it, `^(?:test|demo)$`, or `test` also keeps `latest`.
+- Not supported: lookarounds `(?=…)`, `(?!…)`, `(?<=…)` and backreferences `\1`.
+- In an exported YAML file every regex is in single quotes; a quote inside is written `''`.
+
 ## Placeholders and numbering
 
 - `#` becomes a number per distinct value: `[HOST_1]`, `[HOST_2]`. A repeated value keeps its number, so the LLM can still tell which host is which.

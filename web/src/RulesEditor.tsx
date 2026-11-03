@@ -17,6 +17,25 @@ export function Count({ n }: { n?: number }) {
 // Single-line fields are wrapping textareas so long values stay fully visible; Enter must not add a line.
 const oneLine = (value: string) => value.replace(/\r?\n/g, '')
 
+// [syntax, meaning] rows of the regex cheat sheet on the Rules page; keep in sync with docs/rules.md.
+const cheatSheet: [string, string][] = [
+  ['(?i)', 'at the start: ignore upper and lower case'],
+  ['.', 'any character except a line break'],
+  ['\\.  \\(  \\[  \\\\', 'a literal dot, bracket, backslash: put \\ before any of . * + ? ( ) [ ] { } | ^ $ \\'],
+  ['\\d  \\w  \\s', 'a digit · a letter, digit or _ · whitespace, including line breaks. Uppercase means "not": \\S is not whitespace'],
+  ['\\p{L}', 'any letter, including á, č, ž (\\w is ASCII only)'],
+  ['[abc]  [a-z0-9-]', 'one character from the set'],
+  ['[^"\\n]', 'one character not in the set (here: not a quote, not a line break)'],
+  ['*  +  ?', 'what comes before, 0 or more · 1 or more · 0 or 1 times'],
+  ['{3}  {2,4}  {8,}', 'exactly 3 · 2 to 4 · 8 or more times'],
+  ['*?  +?', 'as few times as possible'],
+  ['a|b', 'a or b'],
+  ['\\b', 'word boundary: \\bweb01\\b does not match inside myweb01x (ASCII letters only)'],
+  ['^  $', 'start and end of the value; use them in Keep'],
+  ['( )', 'group: only this part is replaced'],
+  ['(?: )', 'group for | or repeats that does not change what is replaced'],
+]
+
 const newRule = (): Rule => ({ name: 'New rule', enabled: true, type: 'words', patterns: [], placeholder: '[NAME_#]' })
 
 type Props = {
@@ -36,6 +55,40 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
 
   return (
     <main className="rules-page">
+      <details className="help">
+        <summary>How rules work</summary>
+        <ul>
+          <li>Edits apply to the preview at once. <b>Save</b> stores them for the CLI.</li>
+          <li><b>words</b>: literal text, one per line, case-insensitive, whole words only.</li>
+          <li><b>regex</b>: one regular expression per line, see the cheat sheet below. With a group <code>( )</code> only the group is replaced: <code>password=(\S+)</code> → <code>password=[SECRET_1]</code>.</li>
+          <li><b>Placeholder</b>: <code>#</code> becomes a number per distinct value; repeats keep their number. Without <code>#</code> every value gets the same text.</li>
+          <li><b>Number each part</b> (placeholders with dots): each part is numbered by its own value, so <code>acme.sk</code> → <code>[DOMAIN_1].[TLD_1]</code> and <code>acme.com</code> → <code>[DOMAIN_1].[TLD_2]</code>.</li>
+          <li><b>Keep</b>: matched values that also match this regex stay as they are.</li>
+          <li>When matches overlap, the longest wins.</li>
+          <li>Unedited presets update automatically after an upgrade. Edited ones show <i>Update available</i>.</li>
+        </ul>
+      </details>
+      <details className="help">
+        <summary>Regex cheat sheet</summary>
+        <table>
+          <tbody>
+            {cheatSheet.map(([syntax, meaning]) => (
+              <tr key={syntax}>
+                <td><code>{syntax}</code></td>
+                <td>{meaning}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <ul>
+          <li>Each line in <i>Patterns</i> is its own regex (Go RE2 syntax).</li>
+          <li>Only the first group <code>( )</code> that matched is replaced: <code>(?i)\bcustomer_id=(\w+)</code> → <code>customer_id=[CUSTOMER_1]</code>. Without a group the whole match is replaced.</li>
+          <li><b>Keep</b> is tested against the replaced part only. Anchor it, <code>^(?:test|demo)$</code>, or <code>test</code> also keeps <code>latest</code>.</li>
+          <li>Not supported: lookarounds <code>(?=…)</code> <code>(?!…)</code> <code>(?&lt;=…)</code> and backreferences <code>\1</code>.</li>
+          <li>In an exported YAML file every regex is in single quotes; a quote inside is written <code>''</code>.</li>
+        </ul>
+      </details>
+
       <div className="toolbar">
         <button onClick={() => setDraft([...draft, { name: `Ruleset ${draft.length + 1}`, enabled: true, rules: [newRule()] }])}>
           New ruleset
@@ -162,19 +215,6 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
         )
       })}
 
-      <details className="help">
-        <summary>How rules work</summary>
-        <ul>
-          <li>Edits apply to the preview at once. <b>Save</b> stores them for the CLI.</li>
-          <li><b>words</b>: literal text, one per line, case-insensitive, whole words only.</li>
-          <li><b>regex</b>: Go RE2, no lookarounds. With a group <code>( )</code> only the group is replaced: <code>password=(\S+)</code> → <code>password=[SECRET_1]</code>.</li>
-          <li><b>Placeholder</b>: <code>#</code> becomes a number per distinct value; repeats keep their number. Without <code>#</code> every value gets the same text.</li>
-          <li><b>Number each part</b> (placeholders with dots): each part is numbered by its own value, so <code>acme.sk</code> → <code>[DOMAIN_1].[TLD_1]</code> and <code>acme.com</code> → <code>[DOMAIN_1].[TLD_2]</code>.</li>
-          <li><b>Keep</b>: matched values that also match this regex stay as they are.</li>
-          <li>When matches overlap, the longest wins.</li>
-          <li>Unedited presets update automatically after an upgrade. Edited ones show <i>Update available</i>.</li>
-        </ul>
-      </details>
     </main>
   )
 }
