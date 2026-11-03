@@ -8,9 +8,9 @@ web01.prod.domain.tld  10.20.30.41  203.0.113.17  -Password 'S3cr3t!'  jane@doma
 ```
 
 - **Identifiable placeholders**: each distinct value gets its own numbered token per kind (`[HOST_1]`, `[HOST_2]`, `[EMAIL_1]`); a value repeated in the text keeps its token, so the LLM can still reason about which host is which. Fixed placeholders such as `[DOMAIN].[TLD]` are possible too.
-- **Rulesets with presets**: bundles (Organization, Network, Personal data, Secrets) you switch on/off as a whole or rule by rule. Rules are word/phrase lists or regexes, with an optional *keep* regex (e.g. private IPs stay as they are).
-- **Workspace UI**: draggable, resizable panels: original and redacted text (VS Code editor), applied rulesets, rule editor, redaction map, and a diff view. Hover anything for help.
-- **Same features in CLI and API**; rules are stored on a persistent volume.
+- **Rulesets with presets**: bundles (Organization, Network, Personal data, Secrets) you switch on/off as a whole or rule by rule. Rules are word/phrase lists or regexes, with an optional *keep* regex (e.g. private IPs stay as they are). The presets are based on what actually leaks; see [docs/agentic/rulesets.md](docs/agentic/rulesets.md).
+- **Simple UI**: original and redacted text side by side in one scroll area, placeholders highlighted (hover shows the original), ruleset switches, the redaction map, and a Rules page. Light and dark mode.
+- **Same features in CLI and API**; rules are stored on a persistent volume. Presets you have not edited update themselves when you upgrade.
 - One small container (about 50 MB, amd64 and arm64), no database, runs on a Raspberry Pi.
 
 ## Quick start (Docker)
@@ -24,9 +24,9 @@ Rules live in the `memento-data` volume and survive restarts and image upgrades.
 
 ## Using it
 
-1. **Workspace**: paste text into *Original*. *Redacted* updates as you type. Hover a highlighted placeholder to see what it replaced, then **Copy redacted**.
-2. Something is not redacted? Add it in the *Rule editor* panel (or on the **Rules** page): put words or phrases one per line in *Organization → Names and codenames*, or add a regex rule. The preview applies your edits immediately.
-3. Click **Save rules** to store them on the server; **Discard changes** goes back to the last save. **Restore preset** resets one ruleset, **Reset all to factory defaults** resets everything, **Export/Import** gives you a YAML backup.
+1. **Redact**: paste text into *Original*. *Redacted* updates as you type. Hover a highlighted placeholder to see what it replaced, then **Copy**.
+2. Something is not redacted? On the **Rules** page put words or phrases one per line in *Organization → Names and codenames*, or add a regex rule. The preview applies your edits immediately.
+3. **Save** stores the rules on the server; **Discard** goes back to the last save. **Restore preset** resets one ruleset, **Reset all** resets everything, **Export/Import** gives you a YAML backup.
 
 First thing to do: on the **Rules** page, replace `domain.tld` in the *Organization* ruleset with your real domain (in both the *Hosts in our domain* regex and the *Company domain* words).
 
@@ -39,7 +39,9 @@ First thing to do: on the **Rules** page, replace `domain.tld` in the *Organizat
 | `placeholder` | `#` becomes a number per distinct value (`[HOST_#]`). Without `#`, every value gets the same fixed text |
 | `keep` | optional regex; matched values that also match it are left untouched |
 
-All rules run against the original text. When matches overlap, the longest wins. Factory presets: [config/default-rulesets.yml](config/default-rulesets.yml).
+All rules run against the original text. When matches overlap, the longest wins. Values that only reference something (`$VAR`, `${VAR}`, `$(command)`, `%VAR%`, `{{ template }}`) are kept by the presets' *keep* regex, since the secret is not in the text; a default (`${VAR:-literal}`) or a literal echoed inside `$(echo …)` is still redacted. Factory presets: [config/default-rulesets.yml](config/default-rulesets.yml).
+
+Presets are copied to your rules on first start. On every start, presets you have not edited are updated to the current factory version (your on/off switches are kept). Edited presets stay as they are and show **Update available** on the Rules page; **Restore preset** takes the new version.
 
 ## CLI
 

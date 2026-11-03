@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marek/memento-redact/config"
-	"github.com/marek/memento-redact/internal/rules"
+	"github.com/MeheheCedy22/memento-redact/config"
+	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
 
 const emailRules = `- name: pii
@@ -39,7 +39,7 @@ func newTestConfig(t *testing.T) *config.Config {
 	if err := os.WriteFile(cfg.DefaultRulesPath, []byte(emailRules), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := rules.EnsureSeeded(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
+	if err := rules.Sync(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
 		t.Fatal(err)
 	}
 	return cfg

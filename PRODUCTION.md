@@ -7,9 +7,10 @@ docker compose up -d --build        # or: docker build -t memento-redact . && do
 ```
 
 - UI and API on `http://localhost:8080` (one container; the Go server also serves the web UI).
-- Rulesets: `/app/data/rulesets.yml` on the `memento-data` volume. It is seeded once from the factory presets in the image (`/app/config/default-rulesets.yml`), so image upgrades never overwrite your rules. New presets from an upgrade appear in **Rules → + Add factory preset…** (only if you have no ruleset with that name) or via **Reset all to factory defaults**.
+- Rulesets: `/app/data/rulesets.yml` on the `memento-data` volume, seeded from the factory presets in the image (`/app/config/default-rulesets.yml`). After an image upgrade, presets you have not edited are updated on start (on/off switches kept); edited presets and your own rulesets are never overwritten, and edited presets show **Update available**. New presets appear under **Rules → Add preset…**.
+- Rule files from before this mechanism carry no preset stamp, so every preset shows **Update available** once: click **Restore preset** on the ones you have not customized, then **Save**.
 - The container runs as an unprivileged user (uid 65534), has a healthcheck on `/health`, and needs no other services.
-- Published images: `ghcr.io/<owner>/memento-redact:latest` (linux/amd64 and linux/arm64), built by CI from `main` and `v*` tags.
+- Published images: `ghcr.io/mehehecedy22/memento-redact:latest` (linux/amd64 and linux/arm64), built by CI from `main` and `v*` tags.
 
 ### Settings
 

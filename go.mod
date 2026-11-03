@@ -1,4 +1,4 @@
-module github.com/marek/memento-redact
+module github.com/MeheheCedy22/memento-redact
 
 go 1.25
 

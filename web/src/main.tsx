@@ -1,9 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import 'react-grid-layout/css/styles.css'
-import './monaco'
 import App from './App'
+import { applyStoredTheme } from './theme'
 import './styles.css'
+
+applyStoredTheme()
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/marek/memento-redact/internal/rules"
+	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
 
 // Entry maps one placeholder token back to the distinct original value it replaced.

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/marek/memento-redact/internal/rules"
+	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
 
 func sets(t *testing.T, sets ...*rules.Ruleset) []*rules.Ruleset {

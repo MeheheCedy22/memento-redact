@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marek/memento-redact/config"
-	"github.com/marek/memento-redact/internal/redactor"
-	"github.com/marek/memento-redact/internal/rules"
+	"github.com/MeheheCedy22/memento-redact/config"
+	"github.com/MeheheCedy22/memento-redact/internal/redactor"
+	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
 
 type ruleStore struct {
@@ -154,7 +154,7 @@ func makePutRulesetsHandler(cfg *config.Config, store *ruleStore) http.HandlerFu
 
 func makeDefaultRulesetsHandler(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		defaults, err := rules.Load(cfg.DefaultRulesPath)
+		defaults, err := rules.LoadDefaults(cfg.DefaultRulesPath)
 		if err != nil {
 			http.Error(w, "failed to load default rulesets: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -165,7 +165,7 @@ func makeDefaultRulesetsHandler(cfg *config.Config) http.HandlerFunc {
 
 func makeResetRulesetsHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		defaults, err := rules.Load(cfg.DefaultRulesPath)
+		defaults, err := rules.LoadDefaults(cfg.DefaultRulesPath)
 		if err != nil {
 			http.Error(w, "failed to load default rulesets: "+err.Error(), http.StatusInternalServerError)
 			return

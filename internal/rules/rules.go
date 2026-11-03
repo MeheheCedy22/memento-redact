@@ -2,6 +2,9 @@ package rules
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +22,8 @@ type Ruleset struct {
 	Description string  `yaml:"description,omitempty" json:"description,omitempty"`
 	Enabled     bool    `yaml:"enabled" json:"enabled"`
 	Rules       []*Rule `yaml:"rules" json:"rules"`
+	// Preset is the fingerprint of the factory version this ruleset was copied from; empty for your own rulesets.
+	Preset string `yaml:"preset,omitempty" json:"preset,omitempty"`
 }
 
 // Rule matches sensitive values either by literal words/phrases or by regular expressions.
@@ -202,16 +207,73 @@ func Save(path string, sets []*Ruleset) error {
 	return writeFileAtomic(path, data)
 }
 
-// EnsureSeeded copies the default rulesets file to path if path does not exist yet.
-func EnsureSeeded(path, defaultPath string) error {
-	if _, err := os.Stat(path); err == nil || !errors.Is(err, os.ErrNotExist) {
-		return err
+// LoadDefaults loads the factory presets, each stamped with its fingerprint.
+func LoadDefaults(path string) ([]*Ruleset, error) {
+	sets, err := Load(path)
+	if err != nil {
+		return nil, err
 	}
-	data, err := os.ReadFile(defaultPath)
+	for _, set := range sets {
+		set.Preset = fingerprint(set)
+	}
+	return sets, nil
+}
+
+// Sync seeds path with the factory presets on first start. After that it updates presets
+// you have not edited to their current factory version, keeping your on/off switches;
+// presets you edited are left alone.
+func Sync(path, defaultPath string) error {
+	defaults, err := LoadDefaults(defaultPath)
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(path, data)
+	sets, err := Load(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Save(path, defaults)
+	}
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i, set := range sets {
+		for _, preset := range defaults {
+			if set.Name == preset.Name && set.Preset != "" && set.Preset != preset.Preset && fingerprint(set) == set.Preset {
+				sets[i] = withSwitches(preset, set)
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return Save(path, sets)
+}
+
+// withSwitches copies the on/off state of old onto preset and its rules with the same names.
+func withSwitches(preset, old *Ruleset) *Ruleset {
+	preset.Enabled = old.Enabled
+	for _, r := range preset.Rules {
+		for _, o := range old.Rules {
+			if r.Name == o.Name {
+				r.Enabled = o.Enabled
+			}
+		}
+	}
+	return preset
+}
+
+// fingerprint identifies a ruleset's content, ignoring on/off switches.
+func fingerprint(set *Ruleset) string {
+	c := *set
+	c.Enabled, c.Preset, c.Rules = false, "", nil
+	for _, r := range set.Rules {
+		rc := *r
+		rc.Enabled = false
+		c.Rules = append(c.Rules, &rc)
+	}
+	data, _ := json.Marshal(&c)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8])
 }
 
 // writeFileAtomic writes via a temp file and rename so a crash never leaves a half-written rules file.

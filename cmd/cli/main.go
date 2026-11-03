@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marek/memento-redact/internal/rules"
+	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
 
 // main dispatches CLI subcommands against the memento-redact API.

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, errorText, type PreviewResult, type Ruleset } from './api'
 import RulesEditor, { hitKey } from './RulesEditor'
+import { currentTheme, setTheme, type Theme } from './theme'
 import Workspace from './Workspace'
 
-type Page = 'workspace' | 'rules'
-const pageFromHash = (): Page => (location.hash === '#/rules' ? 'rules' : 'workspace')
+type Page = 'redact' | 'rules'
+const pageFromHash = (): Page => (location.hash === '#/rules' ? 'rules' : 'redact')
 
 function App() {
   const [page, setPage] = useState(pageFromHash)
+  const [theme, setThemeState] = useState<Theme>(currentTheme)
   const [saved, setSaved] = useState<Ruleset[] | null>(null)
   const [draft, setDraft] = useState<Ruleset[]>([])
   const [defaults, setDefaults] = useState<Ruleset[]>([])
@@ -90,60 +92,49 @@ function App() {
     }
   }
 
-  const save = () => run(async () => adopt(await api.save(draft), 'Rules saved on the server. The CLI and proxy use them now.'))
-  const discard = () => saved && adopt(saved, 'Unsaved rule changes discarded.')
+  const save = () => run(async () => adopt(await api.save(draft), 'Saved.'))
+  const discard = () => saved && adopt(saved, 'Changes discarded.')
   const reset = () => {
-    if (confirm('Replace ALL rulesets with the factory defaults?\n\nYour own words and rules will be lost. Use "Export saved (YAML)" first to keep a copy.')) {
-      void run(async () => adopt(await api.reset(), 'All rulesets reset to factory defaults.'))
+    if (confirm('Replace all rules, including your own, with the factory presets?\n\nExport first if you want a copy.')) {
+      void run(async () => adopt(await api.reset(), 'Factory presets restored.'))
     }
   }
   const importYaml = (yaml: string) => {
-    if (confirm('Replace ALL rulesets with the imported file?\n\nIt is saved immediately; unsaved changes are lost.')) {
-      void run(async () => adopt(await api.importYaml(yaml), 'Rulesets imported and saved.'))
+    if (confirm('Replace all rules with this file? It is saved immediately.')) {
+      void run(async () => adopt(await api.importYaml(yaml), 'Imported.'))
     }
   }
-
-  const editor = (
-    <RulesEditor
-      draft={draft}
-      setDraft={setDraft}
-      defaults={defaults}
-      hits={hits}
-      error={previewError}
-      busy={busy}
-      onReset={reset}
-      onImport={importYaml}
-    />
-  )
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    setThemeState(next)
+  }
 
   return (
-    <div className="app">
+    <>
       <header className="topbar">
-        <h1 title="Self-hosted redaction proxy: remove PII and internal names before text goes to an LLM.">memento-redact</h1>
+        <strong className="brand">memento-redact</strong>
         <nav>
-          <a href="#/" className={page === 'workspace' ? 'active' : ''} title="Redact text: original, redacted result, rulesets and map side by side.">Workspace</a>
-          <a href="#/rules" className={page === 'rules' ? 'active' : ''} title="Manage rulesets, presets, words and regexes on a full page.">Rules</a>
+          <a href="#/" aria-current={page === 'redact' ? 'page' : undefined}>Redact</a>
+          <a href="#/rules" aria-current={page === 'rules' ? 'page' : undefined}>Rules</a>
         </nav>
         <span className="spacer" />
-        {dirty ? (
-          <>
-            <span className="chip busy" title="Rule edits are already used in the preview, but not stored on the server yet.">● Unsaved rule changes</span>
-            <button onClick={save} disabled={busy} title="Store the current rules on the server (persistent volume). The CLI and proxy use them from then on.">Save rules</button>
-            <button className="secondary" onClick={discard} disabled={busy} title="Throw away rule edits since the last save and go back to the saved rules.">Discard changes</button>
-          </>
-        ) : (
-          <span className="chip ok" title="The rules in use match the rules stored on the server.">{saved ? 'Rules saved' : 'Loading…'}</span>
+        {status && (
+          <span className={status.kind === 'error' ? 'error-text' : 'note'} role={status.kind === 'error' ? 'alert' : 'status'}>
+            {status.text}
+          </span>
         )}
+        {dirty && (
+          <>
+            <span className="muted" title="Edits are used in the preview but not stored yet.">Unsaved changes</span>
+            <button className="primary" onClick={save} disabled={busy} title="Store the rules on the server. The CLI and proxy use saved rules.">Save</button>
+            <button onClick={discard} disabled={busy} title="Go back to the last saved rules.">Discard</button>
+          </>
+        )}
+        <button onClick={toggleTheme} title="Switch between light and dark mode.">{theme === 'dark' ? 'Light' : 'Dark'}</button>
       </header>
 
-      {status && (
-        <div className={`status ${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>
-          {status.text}
-          <button className="secondary small" onClick={() => setStatus(null)} title="Dismiss this message." aria-label="Dismiss">✕</button>
-        </div>
-      )}
-
-      {page === 'workspace' ? (
+      {page === 'redact' ? (
         <Workspace
           text={text}
           setText={setText}
@@ -153,12 +144,20 @@ function App() {
           draft={draft}
           setDraft={setDraft}
           hits={hits}
-          editor={editor}
         />
       ) : (
-        <main className="rules-page">{editor}</main>
+        <RulesEditor
+          draft={draft}
+          setDraft={setDraft}
+          defaults={defaults}
+          hits={hits}
+          error={previewError}
+          busy={busy}
+          onReset={reset}
+          onImport={importYaml}
+        />
       )}
-    </div>
+    </>
   )
 }
 

@@ -82,31 +82,55 @@ func TestParseAcceptsJSONAndYAML(t *testing.T) {
 	}
 }
 
-func TestSaveLoadRoundTripAndSeeding(t *testing.T) {
+func TestSyncSeedsThenUpgradesOnlyUneditedPresets(t *testing.T) {
 	dir := t.TempDir()
 	defaults := filepath.Join(dir, "defaults.yml")
 	path := filepath.Join(dir, "data", "rulesets.yml")
-	if err := os.WriteFile(defaults, []byte("- name: seed\n  enabled: true\n  rules: []\n"), 0o644); err != nil {
-		t.Fatal(err)
+	writeDefaults := func(pattern string) {
+		t.Helper()
+		yml := "- name: Net\n  enabled: true\n  rules:\n    - {name: IP, enabled: true, type: regex, patterns: ['" + pattern + "']}\n    - {name: MAC, enabled: false, type: regex, patterns: [mac]}\n" +
+			"- name: Org\n  enabled: true\n  rules:\n    - {name: Words, enabled: true, type: words, patterns: ['" + pattern + "']}\n"
+		if err := os.WriteFile(defaults, []byte(yml), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := EnsureSeeded(path, defaults); err != nil {
+
+	writeDefaults("v1")
+	if err := Sync(path, defaults); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	sets, err := Load(path)
-	if err != nil || len(sets) != 1 || sets[0].Name != "seed" {
-		t.Fatalf("seeded load: %v %+v", err, sets)
+	if err != nil || len(sets) != 2 || sets[0].Preset == "" {
+		t.Fatalf("seeded presets must be stamped: %v %+v", err, sets)
 	}
 
-	sets[0].Name = "edited"
+	// user: flips switches on Net (not an edit), adds a word to Org (an edit), adds an own ruleset
+	sets[0].Enabled, sets[0].Rules[1].Enabled = false, true
+	sets[1].Rules[0].Patterns = append(sets[1].Rules[0].Patterns, "acme")
+	sets = append(sets, &Ruleset{Name: "Mine", Enabled: true, Rules: []*Rule{}})
 	if err := Save(path, sets); err != nil {
-		t.Fatalf("save: %v", err)
+		t.Fatal(err)
 	}
-	if err := EnsureSeeded(path, defaults); err != nil {
-		t.Fatalf("seed existing: %v", err)
+
+	writeDefaults("v2")
+	if err := Sync(path, defaults); err != nil {
+		t.Fatalf("upgrade: %v", err)
 	}
 	sets, err = Load(path)
-	if err != nil || sets[0].Name != "edited" {
-		t.Fatalf("seeding must not overwrite saved rules: %v %+v", err, sets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sets[0].Rules[0].Patterns[0]; got != "v2" {
+		t.Errorf("unedited preset not upgraded: %q", got)
+	}
+	if sets[0].Enabled || !sets[0].Rules[1].Enabled {
+		t.Errorf("upgrade must keep on/off switches: %+v", sets[0])
+	}
+	if got := strings.Join(sets[1].Rules[0].Patterns, ","); got != "v1,acme" {
+		t.Errorf("edited preset must be kept: %q", got)
+	}
+	if len(sets) != 3 || sets[2].Name != "Mine" {
+		t.Errorf("own rulesets must be kept: %+v", sets)
 	}
 	entries, _ := os.ReadDir(filepath.Dir(path))
 	if len(entries) != 1 {
@@ -114,10 +138,53 @@ func TestSaveLoadRoundTripAndSeeding(t *testing.T) {
 	}
 }
 
+func TestSyncLeavesUnstampedRulesetsAlone(t *testing.T) {
+	dir := t.TempDir()
+	defaults := filepath.Join(dir, "defaults.yml")
+	path := filepath.Join(dir, "rulesets.yml")
+	if err := os.WriteFile(defaults, []byte("- {name: Net, enabled: true, rules: [{name: IP, enabled: true, type: words, patterns: [new]}]}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := "- {name: Net, enabled: true, rules: [{name: IP, enabled: true, type: words, patterns: [old]}]}\n"
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Sync(path, defaults); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != old {
+		t.Fatalf("rulesets without a preset stamp may be user-edited and must not change: %s", data)
+	}
+}
+
 func TestLoadMissingFileFails(t *testing.T) {
 	if _, err := Load(filepath.Join(t.TempDir(), "missing.yml")); err == nil {
 		t.Fatal("a missing rules file must be an error, not an empty ruleset")
 	}
+}
+
+// tokens are realistic-length examples of the fixed-prefix formats in "Well-known token formats".
+var tokens = []string{
+	"eyJhbGciOi.eyJzdWIiOi.SflKxwRJ",
+	"AKIAIOSFODNN7EXAMPLE",
+	"ghp_" + strings.Repeat("a1", 18),
+	"glpat-" + strings.Repeat("x", 20),
+	"xoxb-1234567890-abcdefghij",
+	"xapp-1-A0123-456-abc123",
+	"sk_live_" + strings.Repeat("Ab1", 8),
+	"AIza" + strings.Repeat("B", 35),
+	"sk-proj-" + strings.Repeat("Q", 30),
+	"ATATT3" + strings.Repeat("xY_", 40),
+	"abc8Q~" + strings.Repeat("z", 32),
+	"dckr_pat_" + strings.Repeat("d", 27),
+	"npm_" + strings.Repeat("n", 36),
+	"pypi-AgEIcHlwaS5vcmc" + strings.Repeat("p", 60),
+	"hf_" + strings.Repeat("h", 34),
+	"hvs." + strings.Repeat("v", 95),
+	"glsa_" + strings.Repeat("g", 32) + "_0123abcd",
+	"dop_v1_" + strings.Repeat("f", 64),
+	"SG." + strings.Repeat("s", 22) + "." + strings.Repeat("t", 43),
+	"123456789:AA" + strings.Repeat("T", 33),
 }
 
 // TestDefaultPresets checks every factory rule against inputs it must and must not redact.
@@ -139,14 +206,30 @@ func TestDefaultPresets(t *testing.T) {
 		{"MAC address", "00:50:56:9a:1b:2c and 00-50-56-9A-1B-2C", []string{"00:50:56:9a:1b:2c", "00-50-56-9A-1B-2C"}},
 		{"Email", "mail jane.doe+x@corp.example.com now", []string{"jane.doe+x@corp.example.com"}},
 		{"Phone number", "+420 777 123 456, +1 (555) 123-4567, 555-123-4567, +420777123456, 10.20.30.40, 2024", []string{"+420 777 123 456", "+1 (555) 123-4567", "555-123-4567", "+420777123456"}},
+		{"Internal hostnames", "srv-db01.corp.local printer.lan api.svc.cluster.local pg.default.svc.cluster.local localhost.local example.com", []string{"srv-db01.corp", "printer"}},
+		{"Cloud account IDs", `arn:aws:iam::123456789012:role/x /subscriptions/0b1f6471-1bf0-4dda-aec3-111122223333/rg AWS_ACCOUNT_ID=210987654321 "tenantId": "72f988bf-86f1-41af-91ab-2d7cd011db47" account_id=42`, []string{"123456789012", "0b1f6471-1bf0-4dda-aec3-111122223333", "210987654321", "72f988bf-86f1-41af-91ab-2d7cd011db47"}},
+		{"Usernames", `JIRA_USER=marek user: root CORP\jdoe HKLM\Software /home/alice/x C:\Users\Bob\AppData C:\Users\Public "username": "carol" User-Agent: curl`, []string{"marek", "jdoe", "alice", "Bob", "carol"}},
+		{"Payment card number", "4111 1111 1111 1111, 5500-0000-0000-0004, 378282246310005, 1234 5678 9012 3456", []string{"4111 1111 1111 1111", "5500-0000-0000-0004", "378282246310005"}},
+		{"IBAN", "CZ65 0800 0000 1920 0014 5399, DE89370400440532013000, AB12", []string{"CZ65 0800 0000 1920 0014 5399", "DE89370400440532013000"}},
+		{"Birth number (CZ/SK)", "850101/1234, 905512/123, 851301/1234, 2024/1234", []string{"850101/1234", "905512/123"}},
 		{"Key-value secrets", `password=hunter2 "apiKey": "abc123" db_password: s3cr3t -Dspring.datasource.password=jdbc tokens are fine`, []string{"hunter2", "abc123", "s3cr3t", "jdbc"}},
-		{"Key-value secrets", "JIRA_PASS=<api_token>\nexport SMTP_PASSWORD=\"correct horse battery\"\nldap.pass: 'a b'\nDB_PASS=\"unclosed\nempty_token=\"\"", []string{"<api_token>", "correct horse battery", "a b", "unclosed"}},
-		{"Command-line password flags", `Connect-VIServer vc -User admin -Password 'S3cr3t!' --token=abc mkdir -p dir`, []string{"'S3cr3t!'", "abc"}},
+		{"Key-value secrets", "JIRA_PASS=SVSIUIUFNOE890i0-x\nexport SMTP_PASSWORD=\"correct horse battery\"\nldap.pass: 'a b'\nDB_PASS=\"unclosed\nempty_token=\"\"", []string{"SVSIUIUFNOE890i0-x", "correct horse battery", "a b", "unclosed"}},
+		{"Key-value secrets", `config['db_password'] = 'p w' "credentials": { heslo := tajne 'password' => 'x' client_secret=abc&scope=y aws_secret_access_key = wJalr`, []string{"p w", "tajne", "x", "abc", "wJalr"}},
+		{"Usernames", `	DB_USER=$(jq -r '.db["user"]' "$CONFIG_FILE") USER=$USER login: "${LOGIN}"`, nil},
+		{"Usernames", `<entry key="dbUsername" value="svc_app"/> <entry key="dbLogin">ops</entry> <username>deploy</username>`, []string{"svc_app", "ops", "deploy"}},
+		{"Key-value secrets", "DB_PASSWORD=$(jq -r '.db[\"password\"]' \"$CONFIG_FILE\")\nPASS=\"${JIRA_PASS}\" TOKEN=$TOKEN API_KEY=%API_KEY% token=$env:TOKEN pass=$1 secret: \"{{ .Values.secret }}\" token: ${{ secrets.TOKEN }} PASS=$(cat /run/secrets/db) PASS=`cat f` DB_PASS=\"$DB_USER:$DB_PASS\"", nil},
+		{"Key-value secrets", `DB_PASS=${DB_PASS:-hunter2} PASS=$(echo 'p@ss' | base64 -d) TOKEN=$(printf -n s3cr3t) PASS=$(echo $OTHER)`, []string{"${DB_PASS:-hunter2}", "'p@ss'", "s3cr3t"}},
+		{"Key-value secrets", `<entry key="dbPassword" value="hunter2"/> <entry key="apiToken">tok123</entry> <password>maven-pw</password> <input type="password"><label>`, []string{"hunter2", "tok123", "maven-pw"}},
+		{"Command-line passwords", `--password "$PASS" -Password $env:PASS --token=${TOKEN} --api-key $(vault read -field=key x)`, nil},
+		{"Auth headers", `curl -H "Authorization: Bearer $JIRA_TOKEN" -H "X-Api-Key: ${KEY}"`, nil},
+		{"Credentials in URLs and curl", `https://$USER:$PASS@host curl -u "$JIRA_USER:$JIRA_PASS" https://x`, nil},
+		{"Command-line passwords", `Connect-VIServer vc -User admin -Password 'S3cr3t!' --token=abc mkdir -p dir --http-password=x docker login --password-stdin < f mysqldump -uroot -pS3cr3t db -P 3306 sshpass -p hunter2 ssh h`, []string{"'S3cr3t!'", "abc", "x", "S3cr3t", "hunter2"}},
 		{"PowerShell plain-text SecureString", `ConvertTo-SecureString "PlainTextPass" -AsPlainText -Force`, []string{`"PlainTextPass"`}},
-		{"Auth headers", "Authorization: Bearer abc.def\nCookie: sid=1; csrftoken=2\nHost: x", []string{"Bearer abc.def", "sid=1; csrftoken=2"}},
-		{"Credentials in URLs", "mysql://app:s3cret@db.example.com/app https://example.com/a:b", []string{"app:s3cret"}},
-		{"Private keys", "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz\n-----END OPENSSH PRIVATE KEY-----", []string{"-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz\n-----END OPENSSH PRIVATE KEY-----"}},
-		{"Well-known token formats", "eyJhbGciOi.eyJzdWIiOi.SflKxwRJ ghp_abcdefghijklmnopqrstuvwxyz AKIAIOSFODNN7EXAMPLE sk-abcdefghijklmnopqrstuv", []string{"eyJhbGciOi.eyJzdWIiOi.SflKxwRJ", "ghp_abcdefghijklmnopqrstuvwxyz", "AKIAIOSFODNN7EXAMPLE", "sk-abcdefghijklmnopqrstuv"}},
+		{"Auth headers", "curl -H \"Authorization: Bearer abc.def\" https://x\nCookie: sid=1; csrftoken=2\nPRIVATE-TOKEN: glpat-x\nHost: x", []string{"Bearer abc.def", "sid=1; csrftoken=2", "glpat-x"}},
+		{"Credentials in URLs and curl", "mysql://app:s3cret@db.example.com/app https://example.com/a:b curl -s -u admin:hunter2 https://jira", []string{"app:s3cret", "admin:hunter2"}},
+		{"Private keys", "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz\n-----END OPENSSH PRIVATE KEY----- -----BEGIN PGP PRIVATE KEY BLOCK-----\nx\n-----END PGP PRIVATE KEY BLOCK-----", []string{"-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz\n-----END OPENSSH PRIVATE KEY-----", "-----BEGIN PGP PRIVATE KEY BLOCK-----\nx\n-----END PGP PRIVATE KEY BLOCK-----"}},
+		{"Well-known token formats", strings.Join(tokens, " ") + " ghp_short notakey", tokens},
+		{"Webhook URLs", "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX https://discord.com/api/webhooks/123/abc-DEF https://contoso.webhook.office.com/webhookb2/abc@def/IncomingWebhook/x/y", []string{"services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX", "123/abc-DEF", "webhookb2/abc@def/IncomingWebhook/x/y"}},
 	}
 	tested := map[string]bool{}
 	for _, tc := range cases {

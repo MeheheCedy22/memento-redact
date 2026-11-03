@@ -13,6 +13,8 @@ export type Ruleset = {
   description?: string
   enabled: boolean
   rules: Rule[]
+  // fingerprint of the factory version a preset was copied from
+  preset?: string
 }
 
 export type MapEntry = {

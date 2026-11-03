@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/marek/memento-redact/config"
-	"github.com/marek/memento-redact/internal/dotenv"
-	"github.com/marek/memento-redact/internal/rules"
-	"github.com/marek/memento-redact/internal/server"
+	"github.com/MeheheCedy22/memento-redact/config"
+	"github.com/MeheheCedy22/memento-redact/internal/dotenv"
+	"github.com/MeheheCedy22/memento-redact/internal/rules"
+	"github.com/MeheheCedy22/memento-redact/internal/server"
 )
 
 func main() {
@@ -21,12 +21,12 @@ func main() {
 	}
 
 	cfg := config.Load()
-	if err := rules.EnsureSeeded(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
-		log.Fatalf("seed rulesets %s from %s: %v", cfg.RulesPath, cfg.DefaultRulesPath, err)
+	if err := rules.Sync(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
+		log.Fatalf("rulesets %s (presets %s): %v; fix the file, or delete it to start from the presets", cfg.RulesPath, cfg.DefaultRulesPath, err)
 	}
 	srv, err := server.New(cfg)
 	if err != nil {
-		log.Fatalf("load rulesets %s (fix the file or delete it to restore defaults): %v", cfg.RulesPath, err)
+		log.Fatalf("load rulesets %s: %v", cfg.RulesPath, err)
 	}
 	if _, err := os.Stat(cfg.StaticDir); err != nil {
 		log.Printf("web UI not found in %s (build it with: cd web && npm run build); API only", cfg.StaticDir)
