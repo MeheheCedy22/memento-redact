@@ -211,7 +211,7 @@ func usage() {
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
 
 examples:
-  kubectl get pods -o wide | memento-redact-cli redact | wl-copy
+  memento-redact-cli redact < app.log > redacted.txt
   memento-redact-cli rules export > rulesets.yml && $EDITOR rulesets.yml && memento-redact-cli rules import rulesets.yml
 `)
 }

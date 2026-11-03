@@ -46,7 +46,6 @@ docker pull ghcr.io/mehehecedy22/memento-redact:latest   # published image, then
 
 On start, presets you have not edited are updated to the new factory version, and your on/off switches are kept. Presets you edited and your own rulesets are never overwritten. Edited presets show **Update available** on the Rules page. Details: [docs/rules.md](docs/rules.md#upgrades).
 
-Rule files from versions before preset stamps have no stamp, so every preset shows **Update available** once. Click **Restore preset** on the ones you have not customized, then **Save**.
 
 ## Settings
 
@@ -59,7 +58,7 @@ All settings are environment variables. Values that are empty or invalid fall ba
 | `DEFAULT_RULES_PATH` | `config/default-rulesets.yml` | `/app/config/default-rulesets.yml` | file path |
 | `STATIC_DIR` | `web/dist` | `/app/web` | directory; if it is missing, only the API runs |
 | `MAX_PAYLOAD_SIZE` | `1048576` | same | a whole number of bytes; anything else (`10MB`) logs a warning and uses the default |
-| `ALLOWED_HOSTS` | empty | same | host names besides `localhost` you open the UI with, comma-separated: `redact.example.com,pi.local` |
+| `ALLOWED_HOSTS` | empty | same | host names besides `localhost` you open the UI with, comma-separated: `redact.example.com,myhost.lan` |
 
 - Docker Compose passes `MAX_PAYLOAD_SIZE` and `ALLOWED_HOSTS` from your shell, or from a `.env` file next to `docker-compose.yml` (see [.env.example](.env.example)). The paths are fixed in the image.
 - When you run the binary directly, set variables in the shell: `LISTEN_ADDR=:9090 bin/memento-redact`.
@@ -70,7 +69,7 @@ All settings are environment variables. Values that are empty or invalid fall ba
 - **There is no login.** Compose binds the port to `127.0.0.1`, so only your own machine can reach it. Everyone who can reach the port can read and change your rules.
 - **Other websites cannot change anything.** Cross-site `POST`/`PUT` requests from a browser are refused with `403` (Go's `http.CrossOriginProtection`).
 - **Other websites cannot read your rules either.** The server answers only requests addressed to `localhost`, an IP address, or a name in `ALLOWED_HOSTS`. This blocks DNS rebinding, where a malicious site points its own domain at `127.0.0.1` and then reads the server as if it were its own.
-- **Exposing it**: put it behind a reverse proxy with authentication and TLS (Caddy, Traefik, nginx) before you change the port mapping. Add the name you open it with to `ALLOWED_HOSTS`, unless the proxy forwards to `127.0.0.1:8080` with the upstream address as `Host` (nginx does this by default). The **Copy** button needs HTTPS or localhost. Over plain HTTP, select the redacted text and press Ctrl+C.
+- **Exposing it**: put it behind a reverse proxy with authentication and TLS before you change the port mapping, and add the name you open it with to `ALLOWED_HOSTS`. The **Copy** button needs HTTPS or localhost. Over plain HTTP, select the redacted text and press Ctrl+C.
 - **Redaction finds only what the rules describe.** Names of people, customers and projects must be added by hand, and secrets without a key name or a known format are not found. Always read the redacted text before you send it anywhere.
 
 ## Backup and restore
@@ -91,15 +90,14 @@ docker compose exec -T memento-redact memento-redact-cli rules import < backup.y
 
 | Symptom | Cause and fix |
 |---|---|
-| Server exits at start with `rulesets …: …; fix the file, or delete it` | The rules file or the presets file is broken or missing. The server refuses to run without rules, because then it would pass text through unredacted. Fix the named line. In Docker: `docker run --rm -it -v memento-redact_memento-data:/app/data alpine vi /app/data/rulesets.yml` (Compose names the volume `<folder>_memento-data`; with `docker run` it is `memento-data`). Deleting the file brings back the presets but loses your rules. |
+| Server exits at start with `rulesets …: …; fix the file, or delete it` | The rules file or the presets file is broken or missing. The server refuses to run without rules, because then it would pass text through unredacted. Fix the named line. Deleting the file brings back the presets but loses your rules. |
 | `payload too large` | The text (in the UI: text plus rules) is over `MAX_PAYLOAD_SIZE`. Raise the limit, as a whole number of bytes. If the log says `is not a whole number of bytes`, your value was ignored. |
-| `host … is not allowed; add it to ALLOWED_HOSTS` | You opened the UI by a name other than `localhost`, e.g. `http://pi.local:8080`. Add that name to `ALLOWED_HOSTS`, or use the IP address. |
-| Every preset shows **Update available** | Your rule file is from before preset stamps. See [Upgrade](#upgrade). |
+| `host … is not allowed; add it to ALLOWED_HOSTS` | You opened the UI by a name other than `localhost`, e.g. `http://myhost.lan:8080`. Add that name to `ALLOWED_HOSTS`, or use the IP address. |
 | Log says `web UI not found` | `STATIC_DIR` has no built UI. Run `cd web && npm run build`, or use the image. |
 | **Copy** says it needs HTTPS | The page is on plain HTTP and not on localhost. Use HTTPS or localhost, or select the text and press Ctrl+C. |
 | A script gets `403 cross-origin request detected` | The script sends an `Origin` or `Sec-Fetch-Site` header from another site. Drop those headers. |
 | Something is not redacted | Add a word or a rule; see [docs/rules.md](docs/rules.md#writing-your-own-rules). |
-| Large pastes are slow | With the presets, the server needs about 2 seconds per MiB on a desktop CPU, and more on a Raspberry Pi. The UI asks again when you pause typing, and the server stops the run it no longer needs. |
+| Large pastes are slow | With the presets, the server needs about 2 seconds per MiB on a desktop CPU. The UI asks again when you pause typing, and the server stops the run it no longer needs. |
 
 ## Test
 

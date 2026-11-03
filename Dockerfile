@@ -1,5 +1,5 @@
 # One image: the Go server serves both the API and the built web UI.
-# Build stages run on the build machine and cross-compile, so amd64 and arm64 (e.g. Raspberry Pi) build fast.
+# Build stages run on the build machine and cross-compile, so amd64 and arm64 build fast.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./

@@ -9,8 +9,7 @@
 # per_part     -> number each dot-separated part by its own value: [DOMAIN_1].[TLD_2]
 # Full reference: docs/rules.md
 #
-# Secret rules follow the gitleaks default config and the Yelp detect-secrets keyword list.
-# GitGuardian's State of Secrets Sprawl 2025: generic passwords and DB credentials are over half of all leaks.
+# Secret rules are adapted from the gitleaks default config and the Yelp detect-secrets keyword list.
 - name: Organization
   description: Your own names. Replace domain.tld with your domain; add hosts, customers, codenames.
   enabled: true

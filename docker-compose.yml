@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       MAX_PAYLOAD_SIZE: ${MAX_PAYLOAD_SIZE:-1048576}
-      # Host names (besides localhost) you open the UI with, e.g. "redact.example.com,pi.local".
+      # Host names (besides localhost) you open the UI with, e.g. "redact.example.com,myhost.lan".
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
     ports:
       # Bound to localhost: the UI has no login and your rules list your sensitive names.

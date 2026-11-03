@@ -99,7 +99,7 @@ memento-redact-cli <command> [--api URL]
 go build -o bin/memento-redact-cli ./cmd/cli
 export API_URL=http://localhost:8080
 
-kubectl get pods -o wide | memento-redact-cli redact | wl-copy
+memento-redact-cli redact < app.log > redacted.txt
 memento-redact-cli preview --input "mail jane@corp.com"
 memento-redact-cli rules disable "Network/Public IPv4"
 memento-redact-cli rules export > rules.yml && $EDITOR rules.yml && memento-redact-cli rules import rules.yml

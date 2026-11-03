@@ -9,13 +9,13 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("LISTEN_ADDR", ":9090")
 	t.Setenv("RULES_PATH", "/data/custom.yml")
 	t.Setenv("MAX_PAYLOAD_SIZE", "2048")
-	t.Setenv("ALLOWED_HOSTS", "redact.example.com, pi.local")
+	t.Setenv("ALLOWED_HOSTS", "redact.example.com, myhost.lan")
 
 	cfg := Load()
 	if cfg.ListenAddr != ":9090" || cfg.RulesPath != "/data/custom.yml" || cfg.MaxPayloadSize != 2048 {
 		t.Fatalf("env values not applied: %+v", cfg)
 	}
-	if strings.Join(cfg.AllowedHosts, "|") != "redact.example.com|pi.local" {
+	if strings.Join(cfg.AllowedHosts, "|") != "redact.example.com|myhost.lan" {
 		t.Fatalf("unexpected allowed hosts: %q", cfg.AllowedHosts)
 	}
 }

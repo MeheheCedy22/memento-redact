@@ -83,6 +83,8 @@ If a part contains `#`, the number replaces it (`[D#].[T#]` → `[D1].[T1]`). Ot
 | Personal data | Email, phone numbers, usernames, payment cards, IBAN, CZ/SK birth numbers |
 | Secrets | Key-value secrets, command-line passwords, PowerShell SecureString, auth headers, credentials in URLs and curl, private keys, well-known token formats, webhook URLs |
 
+The secret patterns are adapted from the [gitleaks default config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) and the [detect-secrets keyword list](https://github.com/Yelp/detect-secrets/blob/master/detect_secrets/plugins/keyword.py).
+
 **After the first start**, open the **Rules** page and replace `domain.tld` with your real domain in two places: the *Hosts in our domain* regex and the *Company domain* words. Then add people, customers and project names to *Names and codenames*.
 
 ### Upgrades
@@ -95,18 +97,6 @@ On every start, the server compares your rules with the factory presets (`rules.
 - New presets and presets you deleted are not added automatically. Add them under **Add preset…**.
 
 Switching rules on or off does not count as an edit. Changing a name, description, pattern, keep regex or placeholder does.
-
-### What the presets cover, and why
-
-Most leaked secrets have no fixed format. GitGuardian's State of Secrets Sprawl 2025 reports that generic secrets (hardcoded passwords, database credentials) are over half of all detected leaks. It finds generic passwords in 24% of private repos, and Jira is the collaboration tool that leaks most (6.1% of tickets). Such secrets can only be found by their key names, so **Key-value secrets** and **Command-line passwords** are the most important rules. Their keyword list follows Yelp detect-secrets (`pass`, `pwd`, `secret`, `api/auth/db/private/client…_key`, `contraseña`) and gitleaks' generic rule (`token`, `credential`, `creds`), and adds the Czech/Slovak `heslo`.
-
-Tokens with a fixed prefix are found with almost no false positives. **Well-known token formats** takes its patterns from the gitleaks default config: AWS, GitHub, GitLab, Slack, Stripe, Google, OpenAI/Anthropic `sk-`, Atlassian `ATATT3`, Azure AD `…Q~`, Docker Hub, npm, PyPI, Hugging Face, Vault, Grafana, DigitalOcean, SendGrid, Telegram and JWT. Other Secrets rules cover private key blocks, credentials in URLs and curl, auth headers and webhook URLs.
-
-People mostly paste internal business data, source code, customer and personal data, and meeting notes into LLMs (LayerX, Cyberhaven, Harmonic; Samsung 2023). The presets cover the parts a regex can find: hostnames and internal domains, public IPs, cloud account IDs, emails, phones, usernames (`user=`, `DOMAIN\user`, home folders), payment cards, IBANs and CZ/SK birth numbers. The list follows Presidio's global entities, plus a local one. Names of people, customers and projects have no pattern: put them into *Organization → Names and codenames*.
-
-Left out on purpose: high-entropy detection (gitleaks' generic rule needs an entropy filter this engine does not have), bare `key:` values, and URLs and UUIDs in general (too many false positives in IT text).
-
-Sources: [gitleaks config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml), [detect-secrets keyword plugin](https://github.com/Yelp/detect-secrets/blob/master/detect_secrets/plugins/keyword.py), [GitGuardian 2025](https://blog.gitguardian.com/the-state-of-secrets-sprawl-2025-pr), [Presidio supported entities](https://presidio.dataprivacystack.org/supported_entities/), [GitHub secret scanning patterns](https://docs.github.com/en/enterprise-cloud@latest/code-security/reference/secret-security/supported-secret-scanning-patterns).
 
 ## Writing your own rules
 
