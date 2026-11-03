@@ -6,6 +6,8 @@
 # type: regex  -> Go RE2; with a capture group, only the first matching group is redacted
 # keep         -> optional regex; matched values that also match it are not redacted
 # placeholder  -> "#" becomes a number per distinct value: [HOST_1], [HOST_2], ...
+# per_part     -> number each dot-separated part by its own value: [DOMAIN_1].[TLD_2]
+# Full reference: docs/rules.md
 #
 # Secret rules follow the gitleaks default config and the Yelp detect-secrets keyword list.
 # GitGuardian's State of Secrets Sprawl 2025: generic passwords and DB credentials are over half of all leaks.

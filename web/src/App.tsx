@@ -127,7 +127,7 @@ function App() {
         {dirty && (
           <>
             <span className="muted" title="Edits are used in the preview but not stored yet.">Unsaved changes</span>
-            <button className="primary" onClick={save} disabled={busy} title="Store the rules on the server. The CLI and proxy use saved rules.">Save</button>
+            <button className="primary" onClick={save} disabled={busy} title="Store the rules on the server. The CLI uses saved rules.">Save</button>
             <button onClick={discard} disabled={busy} title="Go back to the last saved rules.">Discard</button>
           </>
         )}

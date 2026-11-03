@@ -10,16 +10,11 @@ import (
 	"time"
 
 	"github.com/MeheheCedy22/memento-redact/config"
-	"github.com/MeheheCedy22/memento-redact/internal/dotenv"
 	"github.com/MeheheCedy22/memento-redact/internal/rules"
 	"github.com/MeheheCedy22/memento-redact/internal/server"
 )
 
 func main() {
-	if err := dotenv.Load(".env"); err != nil {
-		log.Printf("warning: load .env: %v", err)
-	}
-
 	cfg := config.Load()
 	if err := rules.Sync(cfg.RulesPath, cfg.DefaultRulesPath); err != nil {
 		log.Fatalf("rulesets %s (presets %s): %v; fix the file, or delete it to start from the presets", cfg.RulesPath, cfg.DefaultRulesPath, err)

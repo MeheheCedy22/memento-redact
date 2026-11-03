@@ -1,82 +1,62 @@
 # memento-redact
 
-Self-hosted privacy proxy for LLMs. Paste text (logs, PowerCLI output, configs, emails), get a redacted copy that is safe to give to ChatGPT/Gemini/Claude, plus a map of what every placeholder stands for.
+Self-hosted privacy proxy for LLMs. Paste text such as logs, PowerCLI output, configs or emails. You get a redacted copy that is safe to give to ChatGPT, Gemini or Claude, plus a map of what every placeholder stands for.
 
 ```
-web01.prod.domain.tld  10.20.30.41  203.0.113.17  -Password 'S3cr3t!'  jane@domain.tld
-[HOST_1].[DOMAIN].[TLD] 10.20.30.41 [IP_1]        -Password [SECRET_1] [EMAIL_1]
+web01.prod.domain.tld        10.20.30.41  203.0.113.17  -Password 'S3cr3t!'   jane@domain.tld
+[HOST_1].[DOMAIN_1].[TLD_1]  10.20.30.41  [IP_1]        -Password [SECRET_1]  [EMAIL_1]
 ```
 
-- **Identifiable placeholders**: each distinct value gets its own numbered token per kind (`[HOST_1]`, `[HOST_2]`, `[EMAIL_1]`); a value repeated in the text keeps its token, so the LLM can still reason about which host is which. Fixed placeholders such as `[DOMAIN].[TLD]` are possible too.
-- **Rulesets with presets**: bundles (Organization, Network, Personal data, Secrets) you switch on/off as a whole or rule by rule. Rules are word/phrase lists or regexes, with an optional *keep* regex (e.g. private IPs stay as they are). The presets are based on what actually leaks; see [docs/agentic/rulesets.md](docs/agentic/rulesets.md).
-- **Simple UI**: original and redacted text side by side in one scroll area, placeholders highlighted (hover shows the original), ruleset switches, the redaction map, and a Rules page. Light and dark mode.
-- **Same features in CLI and API**; rules are stored on a persistent volume. Presets you have not edited update themselves when you upgrade.
-- One small container (about 50 MB, amd64 and arm64), no database, runs on a Raspberry Pi.
+- **Placeholders you can tell apart**: every distinct value gets its own numbered token (`[HOST_1]`, `[HOST_2]`), and a repeated value keeps its token, so the LLM can still tell which host is which. Private IPs, key names and `$VARIABLES` stay readable.
+- **Rulesets with presets**: Organization, Network, Personal data and Secrets, based on what actually leaks. You switch them on and off as a whole or rule by rule, and add your own words and regexes.
+- **Simple UI**: the original and redacted text side by side, highlighted placeholders (hover shows the original), the map, a Rules page, light and dark mode.
+- **CLI and HTTP API** with the same features, for pipes and scripts.
+- **One small container** (about 35 MB, amd64 and arm64). No database. It runs on a Raspberry Pi.
 
-## Quick start (Docker)
+## Quick start
 
 ```bash
 docker compose up -d --build
 # open http://localhost:8080
 ```
 
-Rules live in the `memento-data` volume and survive restarts and image upgrades. The port is bound to `127.0.0.1` because there is no login and your rules contain your sensitive names. See [PRODUCTION.md](PRODUCTION.md) to expose it.
+Rules live in the `memento-data` volume and survive restarts and upgrades. The port is bound to `127.0.0.1` because there is no login and your rules list your sensitive names.
+
+**First step**: on the **Rules** page, replace `domain.tld` with your real domain in *Organization* (*Hosts in our domain* and *Company domain*), add names of people, customers and projects to *Names and codenames*, and click **Save**.
 
 ## Using it
 
-1. **Redact**: paste text into *Original*. *Redacted* updates as you type. Hover a highlighted placeholder to see what it replaced; click a placeholder in the *Map* to jump to it in the text (click again for the next occurrence). Then **Copy**.
-2. Something is not redacted? On the **Rules** page put words or phrases one per line in *Organization → Names and codenames*, or add a regex rule. The preview applies your edits immediately.
-3. **Save** stores the rules on the server; **Discard** goes back to the last save. **Restore preset** resets one ruleset, **Reset all** resets everything, **Export/Import** gives you a YAML backup.
-
-First thing to do: on the **Rules** page, replace `domain.tld` in the *Organization* ruleset with your real domain (in both the *Hosts in our domain* regex and the *Company domain* words).
-
-### Rule reference
-
-| Field | Meaning |
-|---|---|
-| `type: words` | literal words/phrases, one per line, case-insensitive, whole words only |
-| `type: regex` | Go RE2 regexes (no lookarounds). With a capture group, only the group is redacted: `password=(\S+)` gives `password=[SECRET_1]` |
-| `placeholder` | `#` becomes a number per distinct value (`[HOST_#]`). Without `#`, every value gets the same fixed text |
-| `per_part` | for placeholders with dots: number each part by its own value, `acme.sk` → `[DOMAIN_1].[TLD_1]`, `acme.com` → `[DOMAIN_1].[TLD_2]` (*Number each part* in the UI; on for *Company domain*) |
-| `keep` | optional regex; matched values that also match it are left untouched |
-
-All rules run against the original text. When matches overlap, the longest wins. Values that only reference something (`$VAR`, `${VAR}`, `$(command)`, `%VAR%`, `{{ template }}`) are kept by the presets' *keep* regex, since the secret is not in the text; a default (`${VAR:-literal}`) or a literal echoed inside `$(echo …)` is still redacted. Factory presets: [config/default-rulesets.yml](config/default-rulesets.yml).
-
-Presets are copied to your rules on first start. On every start, presets you have not edited are updated to the current factory version (your on/off switches are kept). Edited presets stay as they are and show **Update available** on the Rules page; **Restore preset** takes the new version.
-
-## CLI
+1. **Redact**: paste text into *Original*. *Redacted* updates as you type, and the text itself is never stored. Hover a placeholder to see what it replaced. In the *Map*, click a placeholder to jump to it in the text; click again for the next occurrence. Then click **Copy**.
+2. **Something is not redacted?** Add the word to *Organization → Names and codenames*, or add a regex rule on the **Rules** page. The preview uses your edits right away.
+3. **Save** stores the rules on the server, for the CLI too. **Discard** goes back to the last save. **Restore preset** resets one ruleset, **Reset all** resets everything, and **Export** / **Import…** move the rules as YAML.
 
 ```bash
-go build -o bin/memento-redact-cli ./cmd/cli     # also inside the container: docker compose exec memento-redact memento-redact-cli ...
-export API_URL=http://localhost:8080
-
-memento-redact-cli redact < get-vm.txt | wl-copy              # redacted text only, pipe-friendly
-memento-redact-cli preview --input "mail jane@corp.com"       # JSON with redacted text and map
-memento-redact-cli rules list
-memento-redact-cli rules disable "Network/Public IPv4"        # or a whole ruleset: "Network"
-memento-redact-cli rules export > rules.yml && $EDITOR rules.yml && memento-redact-cli rules import rules.yml
-memento-redact-cli rules reset
+kubectl get pods -o wide | memento-redact-cli redact | wl-copy
 ```
 
-## API
+## Limits
 
-| Method | Path | |
-|---|---|---|
-| GET | `/health` | liveness |
-| POST | `/v1/preview` | `text/plain` body uses saved rules; JSON `{"text": "...", "rulesets": [...]}` tests unsaved rules. Returns `{"redacted", "map": [{token, original, ruleset, rule, count}]}` |
-| POST | `/v1/proxy` | redacts the body and forwards it to `PROVIDER_URL` (automatic mode, experimental) |
-| GET | `/v1/rulesets` | saved rulesets as JSON, or YAML with `?format=yaml` |
-| PUT | `/v1/rulesets` | replace all rulesets (JSON or YAML body); validated, then saved |
-| GET | `/v1/rulesets/defaults` | factory presets |
-| POST | `/v1/rulesets/reset` | restore factory presets |
+- It finds only what the rules describe. Names have no pattern and must be added by hand. Secrets without a key name or a known token format are not found. Read the redacted text before you send it.
+- Answers from the LLM are not translated back. Use the map.
+- Numbering starts again for every text. `[HOST_1]` in two separate pastes can be two different hosts.
+- There is no login. Keep it on localhost, or put it behind a reverse proxy with authentication.
+- It does not talk to any LLM itself. You copy the redacted text yourself.
+
+## Documentation
+
+- [docs/rules.md](docs/rules.md): the rule format, how matching and numbering work, what the presets cover, and how to write your own rules
+- [docs/api.md](docs/api.md): the HTTP API and the CLI
+- [PRODUCTION.md](PRODUCTION.md): running, settings, what is stored, security, backup, troubleshooting, tests, CI
+- [docs/agentic/README.md](docs/agentic/README.md): code layout and conventions for maintainers and AI assistants
 
 ## Development
 
 ```bash
-cp .env.example .env
-go run ./cmd/server                 # API on :8080, seeds data/rulesets.yml
-cd web && npm ci && npm run dev     # UI on :5173, proxies the API to :8080
-go test ./... && (cd web && npm run build)
+go run ./cmd/server                 # API on :8080; creates data/rulesets.yml from the presets
+cd web && npm ci && npm run dev     # UI on :5173; sends API calls on to :8080
+go test -race ./... && (cd web && npm run build)
 ```
 
-Configuration is environment-only (`.env` is read at startup; real environment variables win). See [.env.example](.env.example).
+The defaults work without any configuration. To change settings, see [PRODUCTION.md](PRODUCTION.md#settings).
+
+MIT License.

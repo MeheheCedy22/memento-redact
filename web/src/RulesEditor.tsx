@@ -165,7 +165,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
       <details className="help">
         <summary>How rules work</summary>
         <ul>
-          <li>Edits apply to the preview at once. <b>Save</b> stores them for the CLI and proxy.</li>
+          <li>Edits apply to the preview at once. <b>Save</b> stores them for the CLI.</li>
           <li><b>words</b>: literal text, one per line, case-insensitive, whole words only.</li>
           <li><b>regex</b>: Go RE2, no lookarounds. With a group <code>( )</code> only the group is replaced: <code>password=(\S+)</code> → <code>password=[SECRET_1]</code>.</li>
           <li><b>Placeholder</b>: <code>#</code> becomes a number per distinct value; repeats keep their number. Without <code>#</code> every value gets the same text.</li>

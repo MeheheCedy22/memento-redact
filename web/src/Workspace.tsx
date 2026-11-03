@@ -77,7 +77,13 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
       setCopyNote('Copying needs HTTPS or localhost. Select the text and press Ctrl+C.')
       return
     }
-    await navigator.clipboard.writeText(result.redacted)
+    try {
+      await navigator.clipboard.writeText(result.redacted)
+    } catch {
+      // the clipboard still holds what was copied before, often the unredacted original
+      setCopyNote('Copy failed. Select the text and press Ctrl+C.')
+      return
+    }
     setCopyNote('Copied')
     setTimeout(() => setCopyNote(''), 2000)
   }

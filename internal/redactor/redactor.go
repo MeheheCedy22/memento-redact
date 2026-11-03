@@ -1,6 +1,7 @@
 package redactor
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,8 +35,9 @@ type span struct {
 // Redact replaces every match of the enabled rules with placeholder tokens.
 // All rules run against the original text, so no rule ever matches another rule's token.
 // Overlapping matches: the longest wins, ties go to the earlier rule.
-// Tokens are numbered per placeholder in order of appearance; equal values share a token.
-func Redact(text string, sets []*rules.Ruleset) Result {
+// Tokens are numbered per placeholder in order of appearance; values equal ignoring case share a token.
+// It stops with ctx's error when ctx ends, so an abandoned preview does not keep running.
+func Redact(ctx context.Context, text string, sets []*rules.Ruleset) (Result, error) {
 	var spans []span
 	for _, set := range sets {
 		if !set.Enabled {
@@ -44,6 +46,9 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 		for _, r := range set.Rules {
 			if !r.Enabled {
 				continue
+			}
+			if err := ctx.Err(); err != nil {
+				return Result{}, err
 			}
 			for _, m := range r.Find(text) {
 				spans = append(spans, span{start: m[0], end: m[1], order: len(spans), set: set.Name, rule: r.Name, ph: r.Placeholder, perPart: r.PerPart})
@@ -79,7 +84,7 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 	last := 0
 	for _, s := range kept {
 		original := text[s.start:s.end]
-		key := [2]string{s.ph, original}
+		key := [2]string{s.ph, strings.ToLower(original)}
 		i, ok := index[key]
 		if !ok {
 			token := ""
@@ -101,7 +106,7 @@ func Redact(text string, sets []*rules.Ruleset) Result {
 	}
 	b.WriteString(text[last:])
 	res.Redacted = b.String()
-	return res
+	return res, nil
 }
 
 // partNumbering numbers placeholder parts by their own value, case-insensitively.

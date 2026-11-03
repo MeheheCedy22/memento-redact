@@ -1,16 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MeheheCedy22/memento-redact/config"
 	"github.com/MeheheCedy22/memento-redact/internal/rules"
@@ -31,7 +28,6 @@ func newTestConfig(t *testing.T) *config.Config {
 	dir := t.TempDir()
 	cfg := &config.Config{
 		MaxPayloadSize:   1024,
-		RequestTimeout:   5 * time.Second,
 		RulesPath:        filepath.Join(dir, "data", "rulesets.yml"),
 		DefaultRulesPath: filepath.Join(dir, "defaults.yml"),
 		StaticDir:        filepath.Join(dir, "web"),
@@ -54,8 +50,9 @@ func newHandler(t *testing.T, cfg *config.Config) http.Handler {
 	return h
 }
 
+// do sends a request to h as a local client would: addressed to localhost.
 func do(h http.Handler, method, path, contentType, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequest(method, "http://localhost:8080"+path, strings.NewReader(body))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -169,28 +166,6 @@ func TestNewFailsOnBrokenRulesFile(t *testing.T) {
 	}
 }
 
-func TestProxyForwardsRedactedBody(t *testing.T) {
-	got := make(chan string, 1)
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		got <- string(body)
-		_, _ = w.Write([]byte("ok"))
-	}))
-	defer provider.Close()
-
-	cfg := newTestConfig(t)
-	cfg.ProviderURL = provider.URL
-	req := httptest.NewRequest(http.MethodPost, "/v1/proxy", bytes.NewBufferString("email alice@example.com"))
-	rec := httptest.NewRecorder()
-	newHandler(t, cfg).ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("unexpected status: %d", rec.Code)
-	}
-	if body := <-got; body != "email [EMAIL_1]" {
-		t.Fatalf("proxy forwarded unredacted payload: %q", body)
-	}
-}
-
 func TestServesWebUI(t *testing.T) {
 	cfg := newTestConfig(t)
 	if err := os.MkdirAll(cfg.StaticDir, 0o755); err != nil {
@@ -206,7 +181,7 @@ func TestServesWebUI(t *testing.T) {
 
 func TestRejectsCrossSiteWrites(t *testing.T) {
 	h := newHandler(t, newTestConfig(t))
-	req := httptest.NewRequest(http.MethodPost, "/v1/rulesets/reset", nil)
+	req := httptest.NewRequest(http.MethodPost, "http://localhost:8080/v1/rulesets/reset", nil)
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -218,5 +193,30 @@ func TestRejectsCrossSiteWrites(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("same-origin UI request should pass, got %d", rec.Code)
+	}
+}
+
+func TestRejectsUnknownHostNames(t *testing.T) {
+	cfg := newTestConfig(t)
+	cfg.AllowedHosts = []string{"Redact.Example.com"}
+	h := newHandler(t, cfg)
+	for host, want := range map[string]int{
+		"evil.example:8080":         http.StatusForbidden, // DNS rebinding: an attacker's name pointing at 127.0.0.1
+		"evil.example":              http.StatusForbidden,
+		"localhost:8080":            http.StatusOK,
+		"127.0.0.1:8080":            http.StatusOK,
+		"[::1]:8080":                http.StatusOK,
+		"192.168.1.20":              http.StatusOK,
+		"redact.example.com":        http.StatusOK,
+		"REDACT.example.com:443":    http.StatusOK,
+		"redact.example.com.evil.x": http.StatusForbidden,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/v1/rulesets", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q: got %d, want %d", host, rec.Code, want)
+		}
 	}
 }

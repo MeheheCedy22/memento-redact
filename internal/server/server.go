@@ -1,11 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -42,12 +42,33 @@ func New(cfg *config.Config) (http.Handler, error) {
 	mux.HandleFunc("GET /v1/rulesets/defaults", makeDefaultRulesetsHandler(cfg))
 	mux.HandleFunc("POST /v1/rulesets/reset", makeResetRulesetsHandler(cfg, store))
 	mux.HandleFunc("POST /v1/preview", makePreviewHandler(cfg, store))
-	mux.HandleFunc("POST /v1/proxy", makeProxyHandler(cfg, store))
 	if cfg.StaticDir != "" {
 		mux.Handle("GET /", http.FileServer(http.Dir(cfg.StaticDir)))
 	}
-	// No login, so stop other websites from making the browser reset, rewrite or proxy anything.
-	return loggingMiddleware(new(http.CrossOriginProtection).Handler(mux)), nil
+	// No login, so stop other websites from making the browser read, reset or rewrite anything.
+	return loggingMiddleware(allowHosts(cfg.AllowedHosts, new(http.CrossOriginProtection).Handler(mux))), nil
+}
+
+// allowHosts refuses requests addressed to host names other than localhost and the configured ones.
+// Without it, a website could use DNS rebinding to reach this server as "same origin" and read the rules.
+func allowHosts(names []string, next http.Handler) http.Handler {
+	allowed := map[string]bool{"localhost": true}
+	for _, name := range names {
+		allowed[strings.ToLower(name)] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		host = strings.ToLower(strings.Trim(host, "[]"))
+		// rebinding needs a host name, so IP addresses are always safe
+		if net.ParseIP(host) == nil && !allowed[host] {
+			http.Error(w, "host "+host+" is not allowed; add it to ALLOWED_HOSTS", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,40 +103,11 @@ func makePreviewHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 				sets = req.Rulesets
 			}
 		}
-		writeJSON(w, redactor.Redact(text, sets))
-	}
-}
-
-func makeProxyHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
-	client := &http.Client{Timeout: cfg.RequestTimeout}
-	return func(w http.ResponseWriter, r *http.Request) {
-		b, ok := readBody(w, r, cfg.MaxPayloadSize)
-		if !ok {
-			return
-		}
-		if cfg.ProviderURL == "" {
-			http.Error(w, "provider not configured", http.StatusBadGateway)
-			return
-		}
-		redacted := redactor.Redact(string(b), store.get())
-
-		// forward only the redacted text to the provider
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, cfg.ProviderURL, bytes.NewReader([]byte(redacted.Redacted)))
+		res, err := redactor.Redact(r.Context(), text, sets)
 		if err != nil {
-			http.Error(w, "failed to create request", http.StatusInternalServerError)
-			return
+			return // the client went away
 		}
-		req.Header = r.Header.Clone()
-
-		resp, err := client.Do(req)
-		if err != nil {
-			http.Error(w, "provider request failed", http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-
-		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
+		writeJSON(w, res)
 	}
 }
 

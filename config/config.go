@@ -1,32 +1,32 @@
 package config
 
 import (
-	"fmt"
+	"log"
 	"os"
-	"time"
+	"strconv"
+	"strings"
 )
 
-// Config holds runtime configuration for the proxy.
+// Config holds runtime configuration for the server.
 type Config struct {
 	ListenAddr       string
-	ProviderURL      string
 	MaxPayloadSize   int64
-	RequestTimeout   time.Duration
 	RulesPath        string
 	DefaultRulesPath string
 	StaticDir        string
+	// AllowedHosts are host names besides localhost that requests may be addressed to; IP addresses always pass.
+	AllowedHosts []string
 }
 
-// Load reads configuration from environment variables (see .env.example), falling back to defaults.
+// Load reads configuration from environment variables, falling back to defaults.
 func Load() *Config {
 	return &Config{
 		ListenAddr:       getEnv("LISTEN_ADDR", ":8080"),
-		ProviderURL:      getEnv("PROVIDER_URL", ""),
 		RulesPath:        getEnv("RULES_PATH", "data/rulesets.yml"),
 		DefaultRulesPath: getEnv("DEFAULT_RULES_PATH", "config/default-rulesets.yml"),
 		StaticDir:        getEnv("STATIC_DIR", "web/dist"),
-		MaxPayloadSize:   parseInt64(getEnv("MAX_PAYLOAD_SIZE", "1048576"), 1<<20),
-		RequestTimeout:   parseDuration(getEnv("REQUEST_TIMEOUT_SECONDS", "15s"), 15*time.Second),
+		MaxPayloadSize:   parseBytes("MAX_PAYLOAD_SIZE", 1<<20),
+		AllowedHosts:     strings.Fields(strings.ReplaceAll(os.Getenv("ALLOWED_HOSTS"), ",", " ")),
 	}
 }
 
@@ -37,19 +37,16 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func parseInt64(value string, fallback int64) int64 {
-	var parsed int64
-	_, err := fmt.Sscan(value, &parsed)
+// parseBytes reads a whole number of bytes; anything else (e.g. "10MB") is reported and replaced by fallback.
+func parseBytes(key string, fallback int64) int64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed <= 0 {
+		log.Printf("warning: %s=%q is not a whole number of bytes; using %d", key, value, fallback)
 		return fallback
 	}
 	return parsed
-}
-
-func parseDuration(value string, fallback time.Duration) time.Duration {
-	duration, err := time.ParseDuration(value)
-	if err != nil || duration <= 0 {
-		return fallback
-	}
-	return duration
 }

@@ -37,9 +37,6 @@ func main() {
 		}
 		decode(request(api, http.MethodPost, "/v1/preview", "text/plain; charset=utf-8", input), &res)
 		fmt.Print(res.Redacted)
-	case "proxy":
-		api, input := parseInput(os.Args[2:])
-		os.Stdout.Write(request(api, http.MethodPost, "/v1/proxy", "text/plain; charset=utf-8", input))
 	case "rules":
 		runRules(os.Args[2:])
 	default:
@@ -207,7 +204,6 @@ func usage() {
   health                          check the API
   redact  [--input TEXT]          print the redacted text (reads stdin without --input)
   preview [--input TEXT]          print redacted text and the token map as JSON
-  proxy   [--input TEXT]          redact and forward to PROVIDER_URL, print the response
   rules list                      show rulesets and rules with their on/off state
   rules export                    print saved rulesets as YAML
   rules import [FILE|-]           replace all rulesets with a YAML/JSON file (or stdin)
