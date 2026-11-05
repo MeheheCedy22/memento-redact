@@ -70,7 +70,7 @@
       type: regex
       patterns:
         - '\barn:aws[\w-]*:[\w-]+:[\w-]*:(\d{12}):'
-        - '(?i)/subscriptions/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
+        - '(?i)/subscriptions/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'
         - '(?i)\b[\w-]*(?:account|subscription|tenant)[_-]?id["'']?[ \t]*[:=][ \t]*["''`“„«‘]?([\w-]{8,})'
       placeholder: '[CLOUD_ID_#]'
     - name: Git repositories
@@ -228,7 +228,7 @@
         - '(?i)\bxox[abeprs]-[\w-]{10,}'
         - '(?i)\bxapp-\d-[a-z0-9]+-\d+-[a-z0-9]+'
         - '\b(?:sk|rk)_(?:test|live|prod)_[A-Za-z0-9]{10,}'
-        - '\bAIza[\w-]{35}'
+        - '\bAIza[\w-]{35,}'
         - '\bsk-[A-Za-z0-9_-]{20,}'
         - '\bATATT3[\w=-]{100,}'
         - '\b[\w~.]{3}\dQ~[\w~.-]{31,34}'

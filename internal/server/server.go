@@ -111,7 +111,11 @@ func makePreviewHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 		if err != nil {
 			return // the client went away
 		}
-		writeJSON(w, res)
+		// warnings travel with the preview, so the Rules page sees them for the rules being edited
+		writeJSON(w, struct {
+			redactor.Result
+			Warnings []rules.Warning `json:"warnings,omitempty"`
+		}{res, rules.Lint(sets)})
 	}
 }
 

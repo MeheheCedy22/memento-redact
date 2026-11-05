@@ -146,8 +146,21 @@ Switching rules on or off does not count as an edit. Changing a name, descriptio
 
 To skip some values, add a keep regex, for example `^(?:test|demo)$`.
 
+### Warnings
+
+The Rules page marks rules that work but probably redact too much or too little: the message sits under the rule's patterns, and the ruleset's tab gets a `!`. `memento-redact-cli rules check` lists the same warnings, and `rules import` prints them. Warnings never block saving.
+
+| Warning | Why | Fix |
+|---|---|---|
+| `.*` takes the rest of the line | A greedy `.*` or `.+` runs to the end of the line, so the value and everything after it is replaced, and a second value on the line is missed. | A class that stops where the value ends, like `[^\s"]*`, or `.*?` |
+| No `\b` at the start | `SRV-\d+` also matches inside `XSRV-12`. Checked when the whole match is replaced, or when the group is at the start of the pattern. A pattern that starts with `\w+` or `[\w.]+` cannot start inside a word, so it is not flagged. | `\bSRV-\d+` |
+| No `\b` at the end | A literal or an exact count like `\d{4}` stops inside a longer word: `12345` becomes `[PIN_1]5`. A greedy `+` or `*` runs to the end of the word by itself, and a range like `{1,63}` counts as a deliberate length limit, so neither is flagged. | `\d{4}\b` |
+| Redacts ordinary text | The rule replaced something in a plain English sentence (*The quick brown fox…*), so it matches far more than its values: `\w+`, `[a-z]+`, or a word like `the` in a names list. | Make the pattern more specific |
+
+The factory presets have no warnings; a test keeps it that way.
+
 To test a rule, paste a sample on the **Redact** page. The preview uses your unsaved edits. The counts next to each rule and the **Map** show what every rule replaced. To report a rule that redacts too much or too little, use **Debug** in the *Map* (see the [README](../README.md#using-it)). **Save** stores the rules for the CLI.
 
 ## Changing the factory presets
 
-This section is for contributors. Edit [config/default-rulesets.yml](../config/default-rulesets.yml), then add a case to `TestDefaultPresets` ([internal/rules/rules_test.go](../internal/rules/rules_test.go)) for every preset rule you add or change. The test fails if a preset rule has no case. Run `go test ./internal/rules`. Installed copies that nobody has edited update on their next start.
+This section is for contributors. Edit [config/default-rulesets.yml](../config/default-rulesets.yml), then add a case to `TestDefaultPresets` ([internal/rules/rules_test.go](../internal/rules/rules_test.go)) for every preset rule you add or change. The test fails if a preset rule has no case. `TestDefaultPresetsHaveNoWarnings` fails if a preset gets a [warning](#warnings). Run `go test ./internal/rules`. Installed copies that nobody has edited update on their next start.

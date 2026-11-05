@@ -32,9 +32,13 @@ export type MapEntry = {
   numbers?: number[]
 }
 
+// a rule that works but probably redacts too much or too little
+export type Warning = { ruleset: string; rule: string; message: string }
+
 export type PreviewResult = {
   redacted: string
   map: MapEntry[]
+  warnings?: Warning[]
 }
 
 // Same origin: the Go server serves the UI; `npm run dev` proxies these paths (vite.config.ts).

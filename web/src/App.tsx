@@ -79,6 +79,15 @@ function App() {
     return counts
   }, [result])
 
+  // rule warnings from the last preview, by rule and by ruleset
+  const warnings = useMemo(() => {
+    const byKey = new Map<string, string[]>()
+    for (const w of result?.warnings ?? []) {
+      for (const key of [hitKey(w.ruleset), hitKey(w.ruleset, w.rule)]) byKey.set(key, [...(byKey.get(key) ?? []), w.message])
+    }
+    return byKey
+  }, [result])
+
   function adopt(sets: Ruleset[], message: string) {
     setSaved(sets)
     setDraft(sets)
@@ -158,6 +167,7 @@ function App() {
           setDraft={setDraft}
           defaults={defaults}
           hits={hits}
+          warnings={warnings}
           error={previewError}
           busy={busy}
           onReset={reset}

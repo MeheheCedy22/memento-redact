@@ -8,6 +8,7 @@
   --on-accent: #ffffff;
   --danger: #b42318;
   --ok: #2e7d32;
+  --warn: #9a5b00;
   --mark: #ffec99;
   color-scheme: light;
 }
@@ -23,6 +24,7 @@
     --on-accent: #10161f;
     --danger: #f2877e;
     --ok: #7cc47f;
+    --warn: #e0b057;
     --mark: #5c4b12;
     color-scheme: dark;
   }
@@ -38,6 +40,7 @@
   --on-accent: #10161f;
   --danger: #f2877e;
   --ok: #7cc47f;
+  --warn: #e0b057;
   --mark: #5c4b12;
   color-scheme: dark;
 }
@@ -480,6 +483,16 @@ button.chip {
 
 .tabs .count {
   margin-left: 0.3rem;
+}
+
+.warn {
+  color: var(--warn);
+  font-size: 12.5px;
+}
+
+.tabs .warn {
+  margin-left: 0.3rem;
+  font-weight: 600;
 }
 
 dialog {

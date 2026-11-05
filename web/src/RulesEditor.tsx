@@ -101,12 +101,14 @@ type Props = {
   setDraft: (sets: Ruleset[]) => void
   defaults: Ruleset[]
   hits: Map<string, number>
+  // warning messages by hitKey(ruleset) and hitKey(ruleset, rule)
+  warnings: Map<string, string[]>
   error: string
   busy: boolean
   onReset: () => void
 }
 
-export default function RulesEditor({ draft, saved, setDraft, defaults, hits, error, busy, onReset }: Props) {
+export default function RulesEditor({ draft, saved, setDraft, defaults, hits, warnings, error, busy, onReset }: Props) {
   const fileInput = useRef<HTMLInputElement>(null)
   const importDialog = useRef<HTMLDialogElement>(null)
   const [picked, setPicked] = useState(0)
@@ -152,6 +154,7 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, er
           <li><b>Keep</b>: matched values that also match this regex stay as they are.</li>
           <li><b>Sample lines</b> (under the patterns): lines to try the rule on. Each is shown redacted by that rule alone as you edit; <i>not redacted</i> marks a line it left as it was. They are saved with the rule and do not count as an edit of a preset.</li>
           <li>When matches overlap, the longest wins.</li>
+          <li><span className="warn">Warnings</span> point at rules that probably redact too much or too little: a greedy <code>.*</code>, a missing <code>\b</code>, or a rule that redacts ordinary text. They do not stop anything.</li>
           <li>Unedited presets update automatically after an upgrade. Edited ones show <i>Update available</i>.</li>
         </ul>
       </details>
@@ -229,6 +232,7 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, er
           <button key={i} className={set.enabled ? '' : 'off'} aria-current={i === current ? 'true' : undefined} onClick={() => setPicked(i)} title={set.description}>
             {set.name || 'Unnamed'}
             <Count n={hits.get(hitKey(set.name))} />
+            {warnings.has(hitKey(set.name)) && <span className="warn" title={`${warnings.get(hitKey(set.name))?.length} rule warnings`}>!</span>}
             {updateAvailable(set) && <span className="note" title="Update available"> •</span>}
           </button>
         ))}
@@ -318,6 +322,9 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, er
                       spellCheck={false}
                       aria-label="Patterns"
                     />
+                    {warnings.get(hitKey(set.name, rule.name))?.map((message) => (
+                      <span key={message} className="warn" role="note">{message}</span>
+                    ))}
                     <Samples rule={rule} setName={set.name} onChange={(samples) => change({ samples })} />
                   </div>
                   <div className="stack">

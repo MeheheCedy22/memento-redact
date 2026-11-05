@@ -52,6 +52,7 @@ curl -X POST --data 'ip 8.8.8.8, mail jane@corp.com' localhost:8080/v1/preview
 - `ruleset` and `rule` name the rule that matched first.
 - `placeholder` is the rule's placeholder, and `numbers` the numbers put into it (one per part with *Number each part*, none for a fixed placeholder). They let `known` continue the numbering.
 - Two entries can share a token. This happens with fixed placeholders (no `#`), where every value gets the same text.
+- `warnings` (only when there are any) lists rules that probably redact too much or too little, as `{"ruleset", "rule", "message"}`, for every rule used, switched-off ones included. See [rules.md](rules.md#warnings). This is how the Rules page shows warnings for unsaved edits.
 - `400`: invalid JSON, or an invalid rule. The message names the ruleset and the rule, e.g. `ruleset "S", rule "R": invalid regex "(": …`.
 - If the client disconnects, the server stops redacting and sends nothing. This is how the UI's live preview drops runs it no longer needs.
 
@@ -98,7 +99,7 @@ memento-redact-cli <command> [--api URL]
   rules import [--add] [FILE|-]   replace all rulesets with a YAML/JSON file (or stdin);
                                   --add adds them instead (same name replaces yours)
   rules reset [NAME]              restore all factory presets, or only preset NAME
-  rules check [FILE]              show each rule's sample lines redacted by that rule alone
+  rules check [FILE]              show rule warnings, and each rule's sample lines redacted by that rule alone
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
 ```
 
@@ -111,7 +112,8 @@ memento-redact-cli <command> [--api URL]
 - `rules list` marks an edited preset whose factory version changed with *(update available)*, like the Rules page.
 - `rules export NAME` prints one ruleset (any case). `rules import` replaces **all** rulesets; `rules import --add` adds the file's rulesets instead, and one with the same name replaces yours (Import… → Add).
 - `rules reset NAME` replaces one ruleset with its factory version, or adds it back if you deleted it (Restore preset, Add preset…). Your edits in it, sample lines included, are lost.
-- `rules check` shows the sample lines of every rule that has them, each redacted by that rule alone, and marks lines it left as they were with *(not redacted)*. With a FILE it checks that file instead of the saved rules.
+- `rules import` reads and checks the file before it saves anything; an empty file is an error, not "delete all rules". It prints the file's [warnings](rules.md#warnings) to stderr.
+- `rules check` lists rule [warnings](rules.md#warnings), then shows the sample lines of every rule that has them, each redacted by that rule alone, and marks lines it left as they were with *(not redacted)*. With a FILE it checks that file instead of the saved rules.
 - `rules enable|disable` ignores case in names. It reads all saved rules, flips one switch and saves them all back. If the Rules page is open with unsaved edits, its next **Save** overwrites this change.
 
 ```bash

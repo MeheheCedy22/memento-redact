@@ -144,6 +144,22 @@ func TestRulesetsPersistAcrossRestartsAndInvalidSavesAreRejected(t *testing.T) {
 	}
 }
 
+func TestPreviewReturnsRuleWarnings(t *testing.T) {
+	h := newHandler(t, newTestConfig(t))
+	body := `{"text":"host=web01 rest","rulesets":[{"name":"S","enabled":true,"rules":[{"name":"R","enabled":true,"type":"regex","patterns":["host=(.*)"]}]}]}`
+	rec := do(h, http.MethodPost, "/v1/preview", "application/json", body)
+	var res struct {
+		Redacted string
+		Warnings []rules.Warning
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || res.Redacted != "host=[REDACTED_1]" || len(res.Warnings) != 1 || res.Warnings[0].Rule != "R" {
+		t.Fatalf("preview: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(h, http.MethodPost, "/v1/preview", "text/plain", "x"); strings.Contains(rec.Body.String(), "warnings") {
+		t.Fatalf("careful rules must not get warnings: %s", rec.Body.String())
+	}
+}
+
 func TestExportOneRuleset(t *testing.T) {
 	h := newHandler(t, newTestConfig(t))
 	put := `[{"name":"Org","enabled":true,"rules":[{"name":"w","enabled":true,"type":"words","patterns":["Phoenix"]}]},

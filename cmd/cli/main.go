@@ -181,17 +181,16 @@ func runRules(args []string) {
 		}
 		os.Stdout.Write(request(*api, http.MethodGet, path, "", nil))
 	case "import":
+		incoming := readRules(fs.Arg(0))
 		if *add {
-			incoming := readRules(fs.Arg(0))
 			save(*api, merge(getRulesets(*api), incoming))
-			for _, set := range incoming {
-				fmt.Fprintf(os.Stderr, "%s: imported (saved)\n", set.Name)
-			}
-			return
+		} else {
+			save(*api, incoming)
 		}
-		data := readInput(fs.Arg(0))
-		request(*api, http.MethodPut, "/v1/rulesets", "application/yaml", data)
-		fmt.Fprintln(os.Stderr, "rulesets imported and saved")
+		for _, set := range incoming {
+			fmt.Fprintf(os.Stderr, "%s: imported (saved)\n", set.Name)
+		}
+		printWarnings(os.Stderr, incoming)
 	case "reset":
 		if name := fs.Arg(0); name != "" {
 			resetOne(*api, name)
@@ -200,10 +199,13 @@ func runRules(args []string) {
 		request(*api, http.MethodPost, "/v1/rulesets/reset", "", nil)
 		fmt.Fprintln(os.Stderr, "rulesets reset to factory defaults")
 	case "check":
-		sets := getRulesets(*api)
+		var sets []*rules.Ruleset
 		if fs.Arg(0) != "" {
 			sets = readRules(fs.Arg(0))
+		} else if sets = getRulesets(*api); rules.Compile(sets) != nil {
+			fatal(fmt.Errorf("the saved rules do not compile with this CLI version"))
 		}
+		printWarnings(os.Stdout, sets)
 		checkSamples(*api, sets)
 	case "enable", "disable":
 		setEnabled(*api, fs.Arg(0), args[0] == "enable")
@@ -265,6 +267,13 @@ func merge(current, incoming []*rules.Ruleset) []*rules.Ruleset {
 		}
 	}
 	return out
+}
+
+// printWarnings prints the rules that probably redact too much or too little, as the Rules page marks them.
+func printWarnings(w io.Writer, sets []*rules.Ruleset) {
+	for _, warning := range rules.Lint(sets) {
+		fmt.Fprintf(w, "warning: %s / %s: %s\n", warning.Ruleset, warning.Rule, warning.Message)
+	}
 }
 
 // checkSamples prints each rule's sample lines redacted by that rule alone, as the Rules page shows them.
@@ -401,7 +410,7 @@ func usage() {
   rules import [--add] [FILE|-]   replace all rulesets with a YAML/JSON file (or stdin);
                                   --add adds them instead (same name replaces yours)
   rules reset [NAME]              restore all factory presets, or only preset NAME
-  rules check [FILE]              show each rule's sample lines redacted by that rule alone
+  rules check [FILE]              show rule warnings, and each rule's sample lines redacted by that rule alone
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
 
 examples:
