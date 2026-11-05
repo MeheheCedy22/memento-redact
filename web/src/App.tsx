@@ -4,8 +4,8 @@ import RulesEditor, { hitKey } from './RulesEditor'
 import { currentTheme, setTheme, type Theme } from './theme'
 import Workspace from './Workspace'
 
-type Page = 'redact' | 'rules'
-const pageFromHash = (): Page => (location.hash === '#/rules' ? 'rules' : 'redact')
+type Page = 'redact' | 'restore' | 'rules'
+const pageFromHash = (): Page => (location.hash === '#/rules' ? 'rules' : location.hash === '#/restore' ? 'restore' : 'redact')
 
 function App() {
   const [page, setPage] = useState(pageFromHash)
@@ -15,6 +15,7 @@ function App() {
   const [defaults, setDefaults] = useState<Ruleset[]>([])
   // Input text lives only in memory: it is exactly the data this tool must not leave lying around.
   const [text, setText] = useState('')
+  const [answer, setAnswer] = useState('')
   const [result, setResult] = useState<(PreviewResult & { input: string; rules: Ruleset[] }) | null>(null)
   const [previewError, setPreviewError] = useState('')
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -111,6 +112,7 @@ function App() {
         <strong className="brand">memento-redact</strong>
         <nav>
           <a href="#/" aria-current={page === 'redact' ? 'page' : undefined}>Redact</a>
+          <a href="#/restore" aria-current={page === 'restore' ? 'page' : undefined} title="Put the real values back into an LLM's answer.">Restore</a>
           <a href="#/rules" aria-current={page === 'rules' ? 'page' : undefined}>Rules</a>
         </nav>
         <span className="spacer" />
@@ -129,8 +131,11 @@ function App() {
         <button onClick={toggleTheme} title="Switch between light and dark mode.">{theme === 'dark' ? 'Light' : 'Dark'}</button>
       </header>
 
-      {page === 'redact' ? (
+      {page !== 'rules' ? (
         <Workspace
+          mode={page}
+          answer={answer}
+          setAnswer={setAnswer}
           text={text}
           setText={setText}
           result={result}

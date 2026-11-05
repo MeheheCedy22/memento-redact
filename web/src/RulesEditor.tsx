@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import AutoTextarea from './AutoTextarea'
+import { NumberedTextarea } from './Numbered'
 import { api, errorText, exportUrl, type Rule, type Ruleset } from './api'
 import { mergeRulesets } from './rulesets'
 
@@ -227,7 +228,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
               <span>Name</span>
               <span title="words: literal text, case-insensitive, whole words. regex: Go RE2.">Type</span>
               <span>Patterns, one per line</span>
-              <span title="# becomes a number per distinct value.">Placeholder</span>
+              <span title="# becomes a number per distinct value. With dots, like [DOMAIN].[TLD], each part can be numbered on its own.">Placeholder</span>
               <span title="Matches of this regex are not redacted.">Keep</span>
               <span />
             </div>
@@ -245,7 +246,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
                     <option value="words">words</option>
                     <option value="regex">regex</option>
                   </select>
-                  <AutoTextarea
+                  <NumberedTextarea
                     className="mono"
                     rows={1}
                     value={rule.patterns.join('\n')}
@@ -256,11 +257,17 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
                   />
                   <div className="stack">
                     <input className="mono" value={rule.placeholder} onChange={(e) => change({ placeholder: e.target.value })} aria-label="Placeholder" />
-                    {rule.placeholder.includes('.') && (
-                      <label className="option" title="Number each dot-separated part by its own value: acme.sk → [DOMAIN_1].[TLD_1], acme.com → [DOMAIN_1].[TLD_2]. Off: every value gets the same placeholder.">
-                        <input type="checkbox" checked={rule.per_part ?? false} onChange={(e) => change({ per_part: e.target.checked })} />
-                        Number each part
-                      </label>
+                    <label
+                      className="option"
+                      title="Number each dot-separated part by its own value: acme.sk → [DOMAIN_1].[TLD_1], acme.com → [DOMAIN_1].[TLD_2]. Needs a placeholder with dots, like [DOMAIN].[TLD]."
+                    >
+                      <input type="checkbox" checked={rule.per_part ?? false} disabled={!rule.placeholder.includes('.')} onChange={(e) => change({ per_part: e.target.checked })} />
+                      Number each part
+                    </label>
+                    {!rule.placeholder.includes('.') && (
+                      <span className="hint">
+                        needs dots, like <code>[DOMAIN].[TLD]</code>
+                      </span>
                     )}
                   </div>
                   <AutoTextarea className="mono" rows={1} value={rule.keep ?? ''} placeholder="regex" onChange={(e) => change({ keep: oneLine(e.target.value) })} aria-label="Keep regex" />

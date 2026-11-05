@@ -1,6 +1,9 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
+import { copyText } from './clipboard'
+import { NumberedText, NumberedTextarea, type Part } from './Numbered'
+import Restore from './Restore'
 import { debugReport, escapeRegExp, reasons, type Mark } from './debug'
 import { activeProfile, applySwitches, switchesOf } from './rulesets'
 import { saveProfiles, saveReasons, savedProfiles, savedReasons } from './storage'
@@ -25,48 +28,31 @@ const entryKey = (entry: MapEntry) => entry.token + '\u0000' + entry.original
 const newReason = '\u0000new'
 const newProfile = '\u0000save'
 
-// Copies value and reports the outcome through setNote; on failure the clipboard keeps its old content.
-async function copyText(value: string, setNote: (note: string) => void) {
-  if (!navigator.clipboard) {
-    setNote('Copying needs HTTPS or localhost. Select the text and press Ctrl+C.')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(value)
-  } catch {
-    // the clipboard still holds what was copied before, often the unredacted original
-    setNote('Copy failed. Select the text and press Ctrl+C.')
-    return
-  }
-  setNote('Copied')
-  setTimeout(() => setNote(''), 2000)
-}
-
-// Marks every placeholder in the redacted text; hovering one shows what it replaced.
-function Highlighted({ text, map }: { text: string; map: MapEntry[] }) {
+// Splits the redacted text into parts and marks every placeholder; hovering one shows what it replaced.
+function highlight(text: string, map: MapEntry[]): Part[] {
   const byToken = new Map<string, MapEntry[]>()
   for (const entry of map) byToken.set(entry.token, [...(byToken.get(entry.token) ?? []), entry])
-  if (byToken.size === 0) return <>{text}</>
+  if (byToken.size === 0) return [{ text }]
 
   const pattern = new RegExp([...byToken.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|'), 'g')
-  const parts: ReactNode[] = []
+  const parts: Part[] = []
   let last = 0
   for (const match of text.matchAll(pattern)) {
     const at = match.index ?? 0
-    const entries = byToken.get(match[0]) ?? []
-    parts.push(text.slice(last, at))
-    parts.push(
-      <mark key={at} data-token={match[0]} title={entries.map((e) => `${e.original}\n${e.ruleset} › ${e.rule}`).join('\n\n')}>
-        {match[0]}
-      </mark>,
-    )
-    last = at + match[0].length
+    const token = match[0]
+    const title = (byToken.get(token) ?? []).map((e) => `${e.original}\n${e.ruleset} › ${e.rule}`).join('\n\n')
+    parts.push({ text: text.slice(last, at) }, { text: token, wrap: (t, key) => <mark key={key} data-token={token} title={title}>{t}</mark> })
+    last = at + token.length
   }
-  parts.push(text.slice(last))
-  return <>{parts}</>
+  parts.push({ text: text.slice(last) })
+  return parts
 }
 
 type Props = {
+  // the Redact page, or the Restore page (same layout, the text pair shows an LLM answer instead)
+  mode: 'redact' | 'restore'
+  answer: string
+  setAnswer: (answer: string) => void
   text: string
   setText: (text: string) => void
   result: PreviewResult | null
@@ -77,7 +63,7 @@ type Props = {
   hits: Map<string, number>
 }
 
-export default function Workspace({ text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
+export default function Workspace({ mode, answer, setAnswer, text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
   const [copyNote, setCopyNote] = useState('')
   const [debug, setDebug] = useState(false)
   const [reported, setReported] = useState(new Map<string, Omit<Mark, 'entry'>>())
@@ -167,43 +153,49 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
     <main className="workspace">
       {/* one scroll area for both columns, so long texts stay side by side; its height changes only by dragging the corner */}
       <div className="pair">
-        <section>
-          <div className="section-head">
-            <h2>Original</h2>
-            <button onClick={() => setText(example)} title="Replace the text with an example.">Example</button>
-            <button onClick={() => setText('')} title="Clear the text.">Clear</button>
-          </div>
-          <AutoTextarea
-            className="mono"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Paste text here. It is redacted as you type and never stored."
-            spellCheck={false}
-            aria-label="Original text"
-          />
-        </section>
+        {mode === 'restore' ? (
+          <Restore answer={answer} setAnswer={setAnswer} map={result?.map ?? []} outputRef={outputRef} />
+        ) : (
+          <>
+            <section>
+              <div className="section-head">
+                <h2>Original</h2>
+                <button onClick={() => setText(example)} title="Replace the text with an example.">Example</button>
+                <button onClick={() => setText('')} title="Clear the text.">Clear</button>
+              </div>
+              <NumberedTextarea
+                className="mono"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Paste text here. It is redacted as you type and never stored."
+                spellCheck={false}
+                aria-label="Original text"
+              />
+            </section>
 
-        <section>
-          <div className="section-head">
-            <h2>Redacted</h2>
-            <span className="muted" title="Replacements made in the current text.">
-              {previewError ? '' : upToDate ? `${replacements} replaced` : 'updating…'}
-            </span>
-            {copyNote && <span className="note">{copyNote}</span>}
-            <button
-              className="primary"
-              onClick={() => result && copyText(result.redacted, setCopyNote)}
-              disabled={!upToDate || !result?.redacted}
-              title="Copy the redacted text. Disabled while it is out of date or a rule has an error."
-            >
-              Copy
-            </button>
-          </div>
-          {previewError && <p className="error" role="alert">Not redacted: {previewError}</p>}
-          <div ref={outputRef} className={`output mono ${upToDate ? '' : 'stale'}`} aria-label="Redacted text" aria-live="polite">
-            {result?.redacted ? <Highlighted text={result.redacted} map={result.map} /> : <span className="muted">The redacted text appears here.</span>}
-          </div>
-        </section>
+            <section>
+              <div className="section-head">
+                <h2>Redacted</h2>
+                <span className="muted" title="Replacements made in the current text.">
+                  {previewError ? '' : upToDate ? `${replacements} replaced` : 'updating…'}
+                </span>
+                {copyNote && <span className="note">{copyNote}</span>}
+                <button
+                  className="primary"
+                  onClick={() => result && copyText(result.redacted, setCopyNote)}
+                  disabled={!upToDate || !result?.redacted}
+                  title="Copy the redacted text. Disabled while it is out of date or a rule has an error."
+                >
+                  Copy
+                </button>
+              </div>
+              {previewError && <p className="error" role="alert">Not redacted: {previewError}</p>}
+              <div ref={outputRef} className={`output mono ${upToDate ? '' : 'stale'}`} aria-label="Redacted text" aria-live="polite">
+                {result?.redacted ? <NumberedText parts={highlight(result.redacted, result.map)} /> : <span className="muted">The redacted text appears here.</span>}
+              </div>
+            </section>
+          </>
+        )}
       </div>
 
       <div className="below">
@@ -250,9 +242,11 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
         <section>
           <div className="section-head">
             <h2>Map</h2>
-            <button onClick={() => setDebug(!debug)} aria-pressed={debug} title="Mark wrong redactions and copy a report about them.">
-              Debug
-            </button>
+            {mode === 'redact' && (
+              <button onClick={() => setDebug(!debug)} aria-pressed={debug} title="Mark wrong redactions and copy a report about them.">
+                Debug
+              </button>
+            )}
           </div>
           {result?.map.length ? (
             <div className="scroll">
@@ -263,7 +257,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                     <th>Original</th>
                     <th>Rule</th>
                     <th title="Occurrences">#</th>
-                    {debug && <th>Report</th>}
+                    {debug && mode === 'redact' && <th>Report</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -277,7 +271,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                       <td className="mono">{entry.original}</td>
                       <td>{entry.ruleset} › {entry.rule}</td>
                       <td>{entry.count}</td>
-                      {debug && (
+                      {debug && mode === 'redact' && (
                         <td>
                           <select
                             value={reported.get(entryKey(entry))?.reason ?? ''}
@@ -320,7 +314,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
           ) : (
             <p className="muted">Each placeholder and the value it replaced.</p>
           )}
-          {debug && (
+          {debug && mode === 'redact' && (
             <div className="debug">
               <div className="section-head">
                 <span className="muted spacer">Pick a reason next to a wrong placeholder, or select missed text in Redacted.</span>

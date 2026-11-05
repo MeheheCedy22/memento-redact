@@ -224,6 +224,82 @@ textarea {
   min-height: calc(100cqh - 2.75rem);
 }
 
+.pair section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* line numbers: every line is a block whose counter is drawn in the box's left padding */
+.lines {
+  counter-reset: line;
+}
+
+.lines > div {
+  position: relative;
+  min-height: 1lh;
+  counter-increment: line;
+}
+
+.lines > div::before {
+  content: counter(line);
+  position: absolute;
+  right: 100%;
+  width: 2.8rem;
+  padding-right: 0.7rem;
+  text-align: right;
+  color: var(--muted);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.pair .output, .numbered textarea, .numbered .lines {
+  padding-left: 3.5rem;
+}
+
+/* the textarea is transparent over an invisible copy of its text that carries the numbers */
+.numbered {
+  position: relative;
+  flex: 1;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.numbered textarea {
+  position: relative;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+
+.numbered .lines {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* the same padding as the textarea (left is set above), or the copy wraps at a different place */
+  padding-top: 0.3rem;
+  padding-right: 0.45rem;
+  padding-bottom: 0.3rem;
+  border: 1px solid transparent;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+/* pattern lists are short: a narrower gutter */
+.rule .numbered textarea, .rule .numbered .lines {
+  padding-left: 2.3rem;
+}
+
+.rule .lines > div::before {
+  width: 1.8rem;
+  padding-right: 0.5rem;
+}
+
+mark.unresolved {
+  background: none;
+  outline: 1px dashed var(--danger);
+}
+
 .pair .section-head {
   position: sticky;
   top: 0;
@@ -329,6 +405,15 @@ fieldset.off > label, .ruleset.off .rule, .rule.off {
 
 .map textarea {
   margin-top: 0.25rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hint code {
+  white-space: nowrap;
 }
 
 button.chip {

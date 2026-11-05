@@ -12,12 +12,15 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
 - `internal/server`: the handlers (including `POST /v1/rulesets/parse`, which checks a file without saving), the body size limit, `allowHosts` (blocks DNS rebinding) and `http.CrossOriginProtection` (blocks CSRF).
 - `web/`: Vite, React and TypeScript, with no other runtime dependencies.
   - `App.tsx`: draft and saved rules, the live preview, the header.
-  - `Workspace.tsx`: the Redact page.
+  - `Workspace.tsx`: the Redact page, and the Restore page (same layout; the text pair is `Restore.tsx`).
+  - `restore.ts`: puts real values back into an LLM answer, using the map of the current redaction.
+  - `Numbered.tsx`: line numbers for the text pair and the Patterns fields (an invisible copy of the textarea text carries the numbers, so wrapped lines keep theirs).
+  - `clipboard.ts`: copying with a visible note on failure.
   - `RulesEditor.tsx`: the Rules page.
   - `debug.ts`: builds the debug report from the marked map entries and missed texts.
   - `rulesets.ts`: merging an import into the rules, and profiles (saved on/off switches, matched by name).
   - `storage.ts`: the browser-only settings (saved debug reasons, profiles) in `localStorage`.
-  - `*.test.ts`: tests for the pure modules above (`npm test`, Node's built-in runner, excluded from `tsc`). Tested modules may only have type imports, because Node needs file extensions for value imports.
+  - `*.test.ts`: tests for the pure modules above (`npm test`, Node's built-in runner, excluded from `tsc`). Tested modules import each other with the `.ts` extension, because Node needs it (`allowImportingTsExtensions` in `tsconfig.json`).
   - `AutoTextarea.tsx`: form fields that grow with their content.
   - `theme.ts` and the CSS variables: light and dark mode.
 
