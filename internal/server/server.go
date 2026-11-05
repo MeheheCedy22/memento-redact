@@ -39,6 +39,7 @@ func New(cfg *config.Config) (http.Handler, error) {
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /v1/rulesets", makeGetRulesetsHandler(store))
 	mux.HandleFunc("PUT /v1/rulesets", makePutRulesetsHandler(cfg, store))
+	mux.HandleFunc("POST /v1/rulesets/parse", makeParseRulesetsHandler(cfg))
 	mux.HandleFunc("GET /v1/rulesets/defaults", makeDefaultRulesetsHandler(cfg))
 	mux.HandleFunc("POST /v1/rulesets/reset", makeResetRulesetsHandler(cfg, store))
 	mux.HandleFunc("POST /v1/preview", makePreviewHandler(cfg, store))
@@ -141,6 +142,22 @@ func makePutRulesetsHandler(cfg *config.Config, store *ruleStore) http.HandlerFu
 			return
 		}
 		saveAndRespond(w, cfg, store, sets)
+	}
+}
+
+// makeParseRulesetsHandler checks a rules file (JSON or YAML) and returns it as JSON without saving, so the UI can pick from it.
+func makeParseRulesetsHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		b, ok := readBody(w, r, cfg.MaxPayloadSize)
+		if !ok {
+			return
+		}
+		sets, err := rules.Parse(b)
+		if err != nil {
+			http.Error(w, "invalid rulesets: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, sets)
 	}
 }
 

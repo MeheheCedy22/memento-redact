@@ -9,12 +9,15 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
 - `config`: `config.Load()` reads settings from environment variables only; `default-rulesets.yml` holds the factory presets.
 - `internal/rules`: the Ruleset/Rule model, validation (`Compile`), matching (`Find`), YAML load and atomic save, and `Sync`. `Sync` seeds the rules on first start and upgrades unedited presets through the `preset` fingerprint.
 - `internal/redactor`: `Redact` runs all enabled rules on the original text. The longest match wins on overlaps. It numbers tokens per placeholder, ignoring case (`partNumbering` for `per_part`), and builds the map. It stops with an error when the request context ends.
-- `internal/server`: the handlers, the body size limit, `allowHosts` (blocks DNS rebinding) and `http.CrossOriginProtection` (blocks CSRF).
+- `internal/server`: the handlers (including `POST /v1/rulesets/parse`, which checks a file without saving), the body size limit, `allowHosts` (blocks DNS rebinding) and `http.CrossOriginProtection` (blocks CSRF).
 - `web/`: Vite, React and TypeScript, with no other runtime dependencies.
   - `App.tsx`: draft and saved rules, the live preview, the header.
   - `Workspace.tsx`: the Redact page.
   - `RulesEditor.tsx`: the Rules page.
-  - `debug.ts`: builds the debug report from the marked map entries and missed texts; tested by `debug.test.ts` (`npm test`, Node's built-in runner, excluded from `tsc`).
+  - `debug.ts`: builds the debug report from the marked map entries and missed texts.
+  - `rulesets.ts`: merging an import into the rules, and profiles (saved on/off switches, matched by name).
+  - `storage.ts`: the browser-only settings (saved debug reasons, profiles) in `localStorage`.
+  - `*.test.ts`: tests for the pure modules above (`npm test`, Node's built-in runner, excluded from `tsc`). Tested modules may only have type imports, because Node needs file extensions for value imports.
   - `AutoTextarea.tsx`: form fields that grow with their content.
   - `theme.ts` and the CSS variables: light and dark mode.
 

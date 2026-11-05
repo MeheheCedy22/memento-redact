@@ -12,24 +12,6 @@ export const reasons = new Map([
 // reason is a key of reasons or one of the user's own reasons; note is an optional description
 export type Mark = { entry: MapEntry; reason: string; note?: string }
 
-// The user's own reasons live in this browser only.
-export function savedReasons(): string[] {
-  try {
-    const list: unknown = JSON.parse(localStorage.getItem('debugReasons') ?? '[]')
-    return Array.isArray(list) ? list.filter((r): r is string => typeof r === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-export function saveReasons(list: string[]) {
-  try {
-    localStorage.setItem('debugReasons', JSON.stringify(list))
-  } catch {
-    // storage unavailable (private mode): the reasons last until reload
-  }
-}
-
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 // debugReport describes the marked placeholders and the missed texts, with up to 3 lines each occurs in.

@@ -49,8 +49,8 @@ export const api = {
   reset: () => call<Ruleset[]>('/v1/rulesets/reset', { method: 'POST' }),
   save: (sets: Ruleset[]) =>
     call<Ruleset[]>('/v1/rulesets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sets) }),
-  importYaml: (yaml: string) =>
-    call<Ruleset[]>('/v1/rulesets', { method: 'PUT', headers: { 'Content-Type': 'application/yaml' }, body: yaml }),
+  // checks a rules file (YAML or JSON) and returns its rulesets without saving them
+  parse: (file: string) => call<Ruleset[]>('/v1/rulesets/parse', { method: 'POST', headers: { 'Content-Type': 'application/yaml' }, body: file }),
   preview: (text: string, rulesets: Ruleset[], signal: AbortSignal) =>
     call<PreviewResult>('/v1/preview', {
       method: 'POST',

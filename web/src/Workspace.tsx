@@ -1,7 +1,9 @@
 import { useRef, useState, type ReactNode } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
-import { debugReport, escapeRegExp, reasons, saveReasons, savedReasons, type Mark } from './debug'
+import { debugReport, escapeRegExp, reasons, type Mark } from './debug'
+import { activeProfile, applySwitches, switchesOf } from './rulesets'
+import { saveProfiles, saveReasons, savedProfiles, savedReasons } from './storage'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
 
 const example = `PS> Get-VM | Select Name, PowerState, @{N='IP';E={$_.Guest.IPAddress -join ', '}}
@@ -19,8 +21,9 @@ Owner: jane.doe@domain.tld, +420 777 123 456
 `
 
 const entryKey = (entry: MapEntry) => entry.token + '\u0000' + entry.original
-// select value of "New reason…"; a reason name cannot contain it
+// select values of "New reason…" and "Save switches as…"; a name cannot contain them
 const newReason = '\u0000new'
+const newProfile = '\u0000save'
 
 // Copies value and reports the outcome through setNote; on failure the clipboard keeps its old content.
 async function copyText(value: string, setNote: (note: string) => void) {
@@ -81,6 +84,8 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
   const [missed, setMissed] = useState<string[]>([])
   const [reportNote, setReportNote] = useState('')
   const [ownReasons, setOwnReasons] = useState(savedReasons)
+  const [profiles, setProfiles] = useState(savedProfiles)
+  const active = activeProfile(draft, profiles)
   const outputRef = useRef<HTMLDivElement>(null)
   const jumps = useRef(new Map<string, number>())
 
@@ -124,6 +129,26 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
     const next = ownReasons.filter((r) => r !== name)
     setOwnReasons(next)
     saveReasons(next)
+  }
+
+  // Applies a saved profile to the switches, or saves the current switches under a name.
+  function pickProfile(value: string) {
+    if (value !== newProfile) {
+      const profile = profiles.find((p) => p.name === value)
+      if (profile) setDraft(applySwitches(draft, profile.switches))
+      return
+    }
+    const name = prompt('Name of the profile', active)?.trim()
+    if (!name) return
+    const next = [...profiles.filter((p) => p.name !== name), { name, switches: switchesOf(draft) }]
+    setProfiles(next)
+    saveProfiles(next)
+  }
+
+  function deleteProfile() {
+    const next = profiles.filter((p) => p.name !== active)
+    setProfiles(next)
+    saveProfiles(next)
   }
 
   // Adds the text selected in the redacted output as a false negative.
@@ -185,6 +210,20 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
         <section>
           <div className="section-head">
             <h2>Rulesets</h2>
+            <select value={active} onChange={(e) => pickProfile(e.target.value)} aria-label="Profile" title="A profile is a saved set of on/off switches. Pick one to apply it; Save keeps it for the CLI too.">
+              <option value="">{profiles.length ? 'Profile…' : 'No profiles'}</option>
+              {profiles.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+              <option value={newProfile}>Save switches as…</option>
+            </select>
+            {active && (
+              <button className="danger" onClick={deleteProfile} aria-label={`Delete profile ${active}`} title="Delete this profile. The switches stay as they are.">
+                ✕
+              </button>
+            )}
           </div>
           <div className="scroll">
             {draft.map((set, i) => (

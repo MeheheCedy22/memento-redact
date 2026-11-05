@@ -20,6 +20,7 @@ The web UI and the CLI use the same HTTP API and the same redaction code. Anythi
 | POST | `/v1/preview` | Redact text and return the map |
 | GET | `/v1/rulesets` | Saved rulesets as JSON, or YAML with `?format=yaml` |
 | PUT | `/v1/rulesets` | Replace all saved rulesets |
+| POST | `/v1/rulesets/parse` | Check a rules file and return it as JSON, without saving |
 | GET | `/v1/rulesets/defaults` | Factory presets (read only) |
 | POST | `/v1/rulesets/reset` | Replace all saved rulesets with the factory presets |
 
@@ -64,6 +65,10 @@ This replaces **all** saved rulesets. The body can be JSON or YAML; the content 
 curl -s 'localhost:8080/v1/rulesets?format=yaml' > rules.yml
 curl -X PUT --data-binary @rules.yml localhost:8080/v1/rulesets
 ```
+
+### POST /v1/rulesets/parse
+
+Checks a rules file (JSON or YAML, the content type is not checked) exactly like `PUT /v1/rulesets`, and returns its rulesets as JSON in their cleaned-up form. Nothing is saved. The UI's **Import…** uses it to list a file's rulesets before you pick from them. `400` names the first invalid ruleset and rule.
 
 ### GET /v1/rulesets/defaults
 

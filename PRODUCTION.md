@@ -80,7 +80,7 @@ To back up, use **Rules → Export**, or run on the host:
 docker compose exec memento-redact memento-redact-cli rules export > backup.yml
 ```
 
-To restore, use **Rules → Import…**, or:
+To restore, use **Rules → Import…**, tick all rulesets, click **Replace all** and then **Save**. Or:
 
 ```bash
 docker compose exec -T memento-redact memento-redact-cli rules import < backup.yml

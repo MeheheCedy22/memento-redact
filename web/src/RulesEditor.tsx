@@ -1,6 +1,7 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import AutoTextarea from './AutoTextarea'
-import { exportUrl, type Rule, type Ruleset } from './api'
+import { api, errorText, exportUrl, type Rule, type Ruleset } from './api'
+import { mergeRulesets } from './rulesets'
 
 export const updateSet = (sets: Ruleset[], i: number, patch: Partial<Ruleset>) =>
   sets.map((set, j) => (j === i ? { ...set, ...patch } : set))
@@ -46,12 +47,40 @@ type Props = {
   error: string
   busy: boolean
   onReset: () => void
-  onImport: (yaml: string) => void
 }
 
-export default function RulesEditor({ draft, setDraft, defaults, hits, error, busy, onReset, onImport }: Props) {
+export default function RulesEditor({ draft, setDraft, defaults, hits, error, busy, onReset }: Props) {
   const fileInput = useRef<HTMLInputElement>(null)
+  const importDialog = useRef<HTMLDialogElement>(null)
+  const [picked, setPicked] = useState(0)
+  const [incoming, setIncoming] = useState<Ruleset[]>([])
+  const [chosen, setChosen] = useState<boolean[]>([])
+  const [importError, setImportError] = useState('')
   const missingPresets = defaults.filter((preset) => !draft.some((set) => set.name === preset.name))
+  // the ruleset shown below the tabs; stays in range when rulesets are deleted or replaced
+  const current = Math.min(picked, draft.length - 1)
+  const updateAvailable = (set: Ruleset) => defaults.some((p) => p.name === set.name && p.preset !== set.preset)
+
+  // Reads a rules file on the server (it checks every rule) and lets the user pick what to take from it.
+  async function readFile(file: File) {
+    try {
+      const sets = await api.parse(await file.text())
+      setIncoming(sets)
+      setChosen(sets.map(() => true))
+      setImportError('')
+      importDialog.current?.showModal()
+    } catch (e) {
+      setImportError(errorText(e))
+    }
+  }
+
+  function finishImport(replaceAll: boolean) {
+    const taken = incoming.filter((_, k) => chosen[k])
+    const merged = mergeRulesets(draft, taken, replaceAll)
+    setDraft(merged)
+    setPicked(merged.findIndex((set) => set.name === taken[0].name)) // show what arrived
+    importDialog.current?.close()
+  }
 
   return (
     <main className="rules-page">
@@ -90,11 +119,23 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
       </details>
 
       <div className="toolbar">
-        <button onClick={() => setDraft([...draft, { name: `Ruleset ${draft.length + 1}`, enabled: true, rules: [newRule()] }])}>
+        <button
+          onClick={() => {
+            setDraft([...draft, { name: `Ruleset ${draft.length + 1}`, enabled: true, rules: [newRule()] }])
+            setPicked(draft.length)
+          }}
+        >
           New ruleset
         </button>
         {missingPresets.length > 0 && (
-          <select value="" onChange={(e) => setDraft([...draft, ...missingPresets.filter((p) => p.name === e.target.value)])} title="Add back a deleted factory preset.">
+          <select
+            value=""
+            onChange={(e) => {
+              setDraft([...draft, ...missingPresets.filter((p) => p.name === e.target.value)])
+              setPicked(draft.length)
+            }}
+            title="Add back a deleted factory preset."
+          >
             <option value="">Add preset…</option>
             {missingPresets.map((p) => <option key={p.name}>{p.name}</option>)}
           </select>
@@ -103,7 +144,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
         <a className="button" href={exportUrl} download="memento-rulesets.yml" title="Download the saved rules as YAML. Unsaved changes are not included.">
           Export
         </a>
-        <button onClick={() => fileInput.current?.click()} disabled={busy} title="Replace all rules with a YAML or JSON file. Saved immediately.">
+        <button onClick={() => fileInput.current?.click()} disabled={busy} title="Pick rulesets from a YAML or JSON file to add, or to replace all with. Not saved until you click Save.">
           Import…
         </button>
         <input
@@ -114,7 +155,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
           onChange={async (e) => {
             const file = e.target.files?.[0]
             e.target.value = ''
-            if (file) onImport(await file.text())
+            if (file) await readFile(file)
           }}
         />
         <button className="danger" onClick={onReset} disabled={busy} title="Replace all rules, including your own, with the factory presets.">
@@ -122,9 +163,22 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
         </button>
       </div>
 
+      {importError && <p className="error" role="alert">Import: {importError}</p>}
       {error && <p className="error" role="alert">{error}</p>}
 
+      <nav className="tabs" aria-label="Rulesets">
+        {draft.map((set, i) => (
+          <button key={i} className={set.enabled ? '' : 'off'} aria-current={i === current ? 'true' : undefined} onClick={() => setPicked(i)} title={set.description}>
+            {set.name || 'Unnamed'}
+            <Count n={hits.get(hitKey(set.name))} />
+            {updateAvailable(set) && <span className="note" title="Update available"> •</span>}
+          </button>
+        ))}
+      </nav>
+
       {draft.map((set, i) => {
+        // only the ruleset picked in the tabs is shown
+        if (i !== current) return null
         const preset = defaults.find((p) => p.name === set.name)
         return (
           <section key={i} className={`ruleset ${set.enabled ? '' : 'off'}`}>
@@ -139,7 +193,7 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
               <input className="ruleset-name" value={set.name} onChange={(e) => setDraft(updateSet(draft, i, { name: e.target.value }))} aria-label="Ruleset name" />
               <Count n={hits.get(hitKey(set.name))} />
               <span className="spacer" />
-              {preset && preset.preset !== set.preset && (
+              {updateAvailable(set) && (
                 <span className="note" title="The factory version changed. Restore preset to get it; it replaces your edits in this ruleset.">
                   Update available
                 </span>
@@ -149,7 +203,13 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
                   Restore preset
                 </button>
               )}
-              <button className="danger" onClick={() => setDraft(draft.filter((_, j) => j !== i))}>
+              <button
+                className="danger"
+                onClick={() => {
+                  setDraft(draft.filter((_, j) => j !== i))
+                  setPicked(Math.max(0, i - 1))
+                }}
+              >
                 Delete
               </button>
             </div>
@@ -215,6 +275,30 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
         )
       })}
 
+      <dialog ref={importDialog} aria-labelledby="import-title">
+        <h2 id="import-title">Import rulesets</h2>
+        <p className="muted">Pick what to take from the file. Nothing is saved until you click Save.</p>
+        {incoming.map((set, k) => (
+          <label key={k} className="pick">
+            <input type="checkbox" checked={chosen[k] ?? false} onChange={(e) => setChosen(chosen.map((c, j) => (j === k ? e.target.checked : c)))} />
+            {set.name}
+            <span className="muted">
+              {set.rules.length} {set.rules.length === 1 ? 'rule' : 'rules'}
+              {draft.some((d) => d.name === set.name) ? ', replaces yours on Add' : ''}
+            </span>
+          </label>
+        ))}
+        <div className="toolbar">
+          <button className="primary" onClick={() => finishImport(false)} disabled={!chosen.some(Boolean)} title="Add the picked rulesets. One with the same name as yours replaces it.">
+            Add
+          </button>
+          <button className="danger" onClick={() => finishImport(true)} disabled={!chosen.some(Boolean)} title="Your rulesets are replaced by the picked ones.">
+            Replace all
+          </button>
+          <span className="spacer" />
+          <button onClick={() => importDialog.current?.close()}>Cancel</button>
+        </div>
+      </dialog>
     </main>
   )
 }

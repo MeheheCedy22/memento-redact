@@ -2,7 +2,7 @@
 
 Rules decide what is redacted. They come in **rulesets**, bundles you switch on or off as a whole or rule by rule. The server keeps them in one YAML file (`RULES_PATH`). On first start it creates that file from the factory presets in [config/default-rulesets.yml](../config/default-rulesets.yml).
 
-You can edit rules on the **Rules** page, export them to YAML and import the file back, or change them with the CLI ([api.md](api.md#cli)).
+You can edit rules on the **Rules** page (one tab per ruleset), export them to YAML, import rulesets from a file (you pick which ones, then add them or replace all), or change them with the CLI ([api.md](api.md#cli)).
 
 ## Format
 

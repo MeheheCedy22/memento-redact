@@ -373,8 +373,52 @@ button.chip {
   margin-bottom: 1rem;
 }
 
-.toolbar select {
+.toolbar select, .section-head select {
   width: auto;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.tabs button[aria-current] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tabs button.off {
+  opacity: 0.55;
+}
+
+.tabs .count {
+  margin-left: 0.3rem;
+}
+
+dialog {
+  min-width: min(28rem, 90vw);
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+dialog .pick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+dialog .toolbar {
+  margin: 1rem 0 0;
 }
 
 .ruleset {

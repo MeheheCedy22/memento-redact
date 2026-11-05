@@ -136,6 +136,21 @@ func TestRulesetsPersistAcrossRestartsAndInvalidSavesAreRejected(t *testing.T) {
 	}
 }
 
+func TestParseChecksAFileWithoutSaving(t *testing.T) {
+	h := newHandler(t, newTestConfig(t))
+	file := "- name: Extra\n  enabled: true\n  rules:\n    - {name: ids, enabled: true, type: regex, patterns: ['ID-\\d+']}\n"
+	rec := do(h, http.MethodPost, "/v1/rulesets/parse", "application/yaml", file)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"Extra"`) || !strings.Contains(rec.Body.String(), `"placeholder":"[REDACTED_#]"`) {
+		t.Fatalf("parse: %d %s", rec.Code, rec.Body.String())
+	}
+	if saved := do(h, http.MethodGet, "/v1/rulesets", "", ""); strings.Contains(saved.Body.String(), "Extra") {
+		t.Fatalf("parse must not save: %s", saved.Body.String())
+	}
+	if rec := do(h, http.MethodPost, "/v1/rulesets/parse", "application/yaml", "- name: Bad\n  rules:\n    - {name: r, type: regex, patterns: ['(']}\n"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"Bad"`) {
+		t.Fatalf("invalid file: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestResetRestoresDefaults(t *testing.T) {
 	cfg := newTestConfig(t)
 	h := newHandler(t, cfg)

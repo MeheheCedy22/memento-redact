@@ -99,11 +99,6 @@ function App() {
       void run(async () => adopt(await api.reset(), 'Factory presets restored.'))
     }
   }
-  const importYaml = (yaml: string) => {
-    if (confirm('Replace all rules with this file? It is saved immediately.')) {
-      void run(async () => adopt(await api.importYaml(yaml), 'Imported.'))
-    }
-  }
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
@@ -154,7 +149,6 @@ function App() {
           error={previewError}
           busy={busy}
           onReset={reset}
-          onImport={importYaml}
         />
       )}
     </>
