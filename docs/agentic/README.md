@@ -24,6 +24,7 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
 - `docs/rules.md`: rule format and semantics, presets. Update it when matching or numbering changes.
 - `docs/api.md`: endpoints and the CLI. Update it when a handler or a command changes.
 - `PRODUCTION.md`: running, settings table, storage, security, troubleshooting. Update the settings table when `config.Load` changes.
+- `docs/screenshots/`: README images, each in light and dark. Take them from a fresh instance (factory presets, only the built-in **Example** text, 1400 px wide) and retake them after visible UI changes. Never screenshot an instance with real rules.
 
 ## Validation
 

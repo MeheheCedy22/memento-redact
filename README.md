@@ -1,11 +1,13 @@
 # memento-redact
 
+[![ci](https://github.com/MeheheCedy22/memento-redact/actions/workflows/ci.yml/badge.svg)](https://github.com/MeheheCedy22/memento-redact/actions/workflows/ci.yml)
+
 Self-hosted redaction tool. Paste text such as logs, configs or emails. You get a redacted copy you can give to an LLM, plus a map of what every placeholder stands for.
 
-```
-web01.prod.domain.tld        10.20.30.41  203.0.113.17  -Password 'S3cr3t!'   jane@domain.tld
-[HOST_1].[DOMAIN_1].[TLD_1]  10.20.30.41  [IP_1]        -Password [SECRET_1]  [EMAIL_1]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/redact-dark.png">
+  <img alt="The Redact page: PowerCLI output on the left, the same text with highlighted placeholders such as [HOST_1], [IP_1] and [SECRET_1] on the right, the rulesets and the map of placeholders below" src="docs/screenshots/redact-light.png">
+</picture>
 
 - **Placeholders you can tell apart**: every distinct value gets its own numbered token (`[HOST_1]`, `[HOST_2]`), and a repeated value keeps its token, so the LLM can still tell which host is which. Private IPs, key names and `$VARIABLES` stay readable.
 - **Rulesets with presets**: Organization, Network, Personal data and Secrets. You switch them on and off as a whole or rule by rule, and add your own words and regexes.
@@ -29,8 +31,23 @@ Rules live in the `memento-data` volume and survive restarts and upgrades. The p
 1. **Redact**: paste text into *Original*. *Redacted* updates as you type, and the text itself is never stored. Hover a placeholder to see what it replaced. In the *Map*, click a placeholder to jump to it in the text; click again for the next occurrence. Then click **Copy**.
 2. **Something is not redacted?** Add the word to *Organization → Names and codenames*, or add a regex rule on the **Rules** page. The preview uses your edits right away.
 3. **Save** stores the rules on the server, for the CLI too. **Discard** goes back to the last save. **Restore preset** resets one ruleset, **Reset all** resets everything, and **Export** / **Import…** move the rules as YAML.
-
 4. **Report a wrong redaction**: click **Debug** in the *Map*. Pick a reason next to a wrong placeholder (false positive, too much, too little, wrong type, wrong number, or custom with your own description). To report text that was not redacted, select it in *Redacted* and click **Add selection**. Then click **Copy report**. The report lists each item with its rule and the lines it occurs in. Only the values you marked are restored; everything else stays redacted.
+
+**Rules page**: words and regexes, placeholders, *Keep* exceptions and *Number each part*. "How rules work" and a regex cheat sheet open at the top.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/rules-dark.png">
+  <img alt="The Rules page: the Organization ruleset with a regex rule for hosts, a words rule for the company domain with Number each part ticked, and an empty Names and codenames rule" src="docs/screenshots/rules-light.png">
+</picture>
+
+**Debug mode**: a placeholder marked with a custom reason, and the report ready to copy.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/debug-dark.png">
+  <img alt="Debug mode: the map with a Report column, [PHONE_1] marked custom with the note 'our public support line, fine to keep', and the generated debug report below" src="docs/screenshots/debug-light.png" width="640">
+</picture>
+
+From the command line:
 
 ```bash
 memento-redact-cli redact < app.log > redacted.txt
