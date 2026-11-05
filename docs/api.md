@@ -89,18 +89,29 @@ memento-redact-cli <command> [--api URL]
 
   health                          check the API
   redact  [--input TEXT]          print the redacted text (reads stdin without --input)
-  preview [--input TEXT]          print redacted text and the token map as JSON
-  rules list                      show rulesets and rules with their on/off state
+          [--rules FILE]          redact with a rules file instead of the saved rules
+          [--conversation FILE]   keep the placeholders of earlier texts, add this text's values
+  preview [same flags]            print redacted text and the token map as JSON
+  restore --conversation FILE     put the real values back into an LLM answer (stdin or --input)
+  rules list                      show rulesets and rules with their on/off state and updates
   rules export [NAME]             print saved rulesets, or only ruleset NAME, as YAML
-  rules import [FILE|-]           replace all rulesets with a YAML/JSON file (or stdin)
-  rules reset                     restore factory default rulesets
+  rules import [--add] [FILE|-]   replace all rulesets with a YAML/JSON file (or stdin);
+                                  --add adds them instead (same name replaces yours)
+  rules reset [NAME]              restore all factory presets, or only preset NAME
+  rules check [FILE]              show each rule's sample lines redacted by that rule alone
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
 ```
 
 - API URL: `--api`, else the `API_URL` environment variable, else `http://localhost:8080`.
 - On an error it prints the server's message to stderr and exits with code 1. Requests time out after 20 seconds.
 - `redact` prints only the redacted text, with no extra newline, so it works in pipes.
-- `rules export NAME` prints one ruleset (any case). `rules import` replaces **all** rulesets, so to add one exported ruleset to yours use **Import…** → **Add** on the Rules page.
+- `--rules FILE` tries an edited rules file before you import it; the saved rules are not used.
+- `--conversation FILE` is the CLI's conversation: the first `redact` creates the file, later ones keep its placeholders (`web01` stays `[HOST_1]`) and add their new values. `restore` reads it. The file holds the real values and is written with mode `0600`; delete it when the conversation is over.
+- `restore` works like the Restore page and runs locally: the answer is never sent to the server. It prints the restored answer; placeholders it leaves as they are (one that stands for several values, or a numbered one not in the file) are listed on stderr.
+- `rules list` marks an edited preset whose factory version changed with *(update available)*, like the Rules page.
+- `rules export NAME` prints one ruleset (any case). `rules import` replaces **all** rulesets; `rules import --add` adds the file's rulesets instead, and one with the same name replaces yours (Import… → Add).
+- `rules reset NAME` replaces one ruleset with its factory version, or adds it back if you deleted it (Restore preset, Add preset…). Your edits in it, sample lines included, are lost.
+- `rules check` shows the sample lines of every rule that has them, each redacted by that rule alone, and marks lines it left as they were with *(not redacted)*. With a FILE it checks that file instead of the saved rules.
 - `rules enable|disable` ignores case in names. It reads all saved rules, flips one switch and saves them all back. If the Rules page is open with unsaved edits, its next **Save** overwrites this change.
 
 ```bash
@@ -110,7 +121,13 @@ export API_URL=http://localhost:8080
 memento-redact-cli redact < app.log > redacted.txt
 memento-redact-cli preview --input "mail jane@corp.com"
 memento-redact-cli rules disable "Network/Public IPv4"
-memento-redact-cli rules export > rules.yml && $EDITOR rules.yml && memento-redact-cli rules import rules.yml
+memento-redact-cli rules export > rules.yml && $EDITOR rules.yml && memento-redact-cli rules check rules.yml && memento-redact-cli rules import rules.yml
+
+# a conversation: numbering continues across texts, then the LLM's answer gets the real values back
+memento-redact-cli redact --conversation chat.json < app.log > redacted.txt
+memento-redact-cli redact --conversation chat.json < config.yml > redacted-config.txt
+memento-redact-cli restore --conversation chat.json < answer.txt
+rm chat.json
 ```
 
 The Docker image includes the CLI:

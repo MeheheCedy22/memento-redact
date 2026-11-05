@@ -62,7 +62,11 @@ From the command line:
 
 ```bash
 memento-redact-cli redact < app.log > redacted.txt
+memento-redact-cli redact --conversation chat.json < app.log    # numbering continues across texts
+memento-redact-cli restore --conversation chat.json < answer.txt
 ```
+
+The CLI can do what the Rules page does too: export, import (all or add), reset one preset, check sample lines. See [docs/api.md](docs/api.md#cli).
 
 ## Limits
 

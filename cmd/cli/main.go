@@ -3,15 +3,18 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/MeheheCedy22/memento-redact/internal/redactor"
 	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
 
@@ -28,16 +31,10 @@ func main() {
 		fs.Parse(os.Args[2:])
 		os.Stdout.Write(request(*api, http.MethodGet, "/health", "", nil))
 		fmt.Println()
-	case "preview":
-		api, input := parseInput(os.Args[2:])
-		printJSON(request(api, http.MethodPost, "/v1/preview", "text/plain; charset=utf-8", input))
-	case "redact":
-		api, input := parseInput(os.Args[2:])
-		var res struct {
-			Redacted string `json:"redacted"`
-		}
-		decode(request(api, http.MethodPost, "/v1/preview", "text/plain; charset=utf-8", input), &res)
-		fmt.Print(res.Redacted)
+	case "preview", "redact":
+		runRedact(os.Args[1], os.Args[2:])
+	case "restore":
+		runRestore(os.Args[2:])
 	case "rules":
 		runRules(os.Args[2:])
 	default:
@@ -46,19 +43,133 @@ func main() {
 	}
 }
 
-// runRules manages the saved rulesets: list, export, import, reset, enable, disable.
+// runRedact prints the redacted text (redact) or the text and its map as JSON (preview). --rules uses a rules
+// file instead of the saved rules; --conversation keeps the placeholders of earlier texts and adds this text's.
+func runRedact(cmd string, args []string) {
+	fs, api := newFlags(cmd)
+	input := fs.String("input", "", "text to redact; stdin when empty")
+	rulesFile := fs.String("rules", "", "redact with this YAML/JSON rules file instead of the saved rules")
+	convFile := fs.String("conversation", "", "JSON file with the values of earlier texts; created if missing, this text's values are added")
+	fs.Parse(args)
+
+	text := []byte(*input)
+	if *input == "" {
+		text = readInput("")
+	}
+	var sets []*rules.Ruleset // nil: the saved rules
+	if *rulesFile != "" {
+		sets = readRules(*rulesFile)
+	}
+	var known []redactor.Entry
+	if *convFile != "" {
+		known = readConversation(*convFile)
+	}
+	data := preview(*api, string(text), sets, known)
+	var res redactor.Result
+	decode(data, &res)
+	if *convFile != "" {
+		writeConversation(*convFile, remember(known, res.Map))
+	}
+	if cmd == "preview" {
+		printJSON(data)
+		return
+	}
+	fmt.Print(res.Redacted)
+}
+
+// runRestore puts the real values from a conversation file back into an LLM answer, like the Restore page.
+// It runs locally: the answer is never sent to the server.
+func runRestore(args []string) {
+	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	input := fs.String("input", "", "the answer; stdin when empty")
+	convFile := fs.String("conversation", "", "the file written by redact --conversation (required)")
+	fs.Parse(args)
+	if *convFile == "" {
+		fatal(fmt.Errorf("restore needs --conversation FILE, the file written by redact --conversation"))
+	}
+	var conv []redactor.Entry
+	decode(readInput(*convFile), &conv)
+	answer := []byte(*input)
+	if *input == "" {
+		answer = readInput("")
+	}
+	text, notes := restore(string(answer), conv)
+	fmt.Print(text)
+	for _, note := range notes {
+		fmt.Fprintln(os.Stderr, note)
+	}
+}
+
+// preview redacts text with sets (nil: the saved rules), continuing the numbering of known.
+func preview(api, text string, sets []*rules.Ruleset, known []redactor.Entry) []byte {
+	body, err := json.Marshal(struct {
+		Text     string           `json:"text"`
+		Rulesets []*rules.Ruleset `json:"rulesets,omitempty"`
+		Known    []redactor.Entry `json:"known,omitempty"`
+	}{text, sets, known})
+	if err != nil {
+		fatal(err)
+	}
+	return request(api, http.MethodPost, "/v1/preview", "application/json", body)
+}
+
+// readRules reads and checks a YAML/JSON rules file.
+func readRules(path string) []*rules.Ruleset {
+	sets, err := rules.Parse(readInput(path))
+	if err == nil && len(sets) == 0 {
+		err = fmt.Errorf("no rulesets in the file")
+	}
+	if err != nil {
+		fatal(fmt.Errorf("%s: %w", path, err))
+	}
+	return sets
+}
+
+// readConversation reads a conversation file; a missing file is a new conversation.
+func readConversation(path string) []redactor.Entry {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		fatal(err)
+	}
+	var conv []redactor.Entry
+	decode(data, &conv)
+	return conv
+}
+
+// writeConversation saves a conversation file. It holds the real values, so only the owner may read it.
+func writeConversation(path string, conv []redactor.Entry) {
+	data, err := json.MarshalIndent(conv, "", "  ")
+	if err == nil {
+		err = os.WriteFile(path, append(data, '\n'), 0o600)
+	}
+	if err != nil {
+		fatal(err)
+	}
+}
+
+// runRules manages the saved rulesets: list, export, import, reset, check, enable, disable.
 func runRules(args []string) {
 	if len(args) == 0 {
 		usage()
 		os.Exit(1)
 	}
 	fs, api := newFlags("rules " + args[0])
+	add := fs.Bool("add", false, "import: add the file's rulesets to yours (one with the same name replaces yours) instead of replacing all")
 	fs.Parse(args[1:])
 
 	switch args[0] {
 	case "list":
+		defaults := getDefaults(*api)
 		for _, set := range getRulesets(*api) {
-			fmt.Printf("%s %s\n", mark(set.Enabled), set.Name)
+			note := ""
+			// as on the Rules page: a preset whose factory version differs from the one it was copied from
+			if slices.ContainsFunc(defaults, func(p *rules.Ruleset) bool { return p.Name == set.Name && p.Preset != set.Preset }) {
+				note = "   (update available)"
+			}
+			fmt.Printf("%s %s%s\n", mark(set.Enabled), set.Name, note)
 			for _, r := range set.Rules {
 				fmt.Printf("    %s %-36s %-5s %s (%d patterns)\n", mark(r.Enabled), r.Name, r.Type, r.Placeholder, len(r.Patterns))
 			}
@@ -70,12 +181,30 @@ func runRules(args []string) {
 		}
 		os.Stdout.Write(request(*api, http.MethodGet, path, "", nil))
 	case "import":
+		if *add {
+			incoming := readRules(fs.Arg(0))
+			save(*api, merge(getRulesets(*api), incoming))
+			for _, set := range incoming {
+				fmt.Fprintf(os.Stderr, "%s: imported (saved)\n", set.Name)
+			}
+			return
+		}
 		data := readInput(fs.Arg(0))
 		request(*api, http.MethodPut, "/v1/rulesets", "application/yaml", data)
 		fmt.Fprintln(os.Stderr, "rulesets imported and saved")
 	case "reset":
+		if name := fs.Arg(0); name != "" {
+			resetOne(*api, name)
+			return
+		}
 		request(*api, http.MethodPost, "/v1/rulesets/reset", "", nil)
 		fmt.Fprintln(os.Stderr, "rulesets reset to factory defaults")
+	case "check":
+		sets := getRulesets(*api)
+		if fs.Arg(0) != "" {
+			sets = readRules(fs.Arg(0))
+		}
+		checkSamples(*api, sets)
 	case "enable", "disable":
 		setEnabled(*api, fs.Arg(0), args[0] == "enable")
 	default:
@@ -108,18 +237,84 @@ func setEnabled(api, target string, enabled bool) {
 	if !changed {
 		fatal(fmt.Errorf("%q not found; see: memento-redact-cli rules list", target))
 	}
-	body, err := json.Marshal(sets)
-	if err != nil {
-		fatal(err)
-	}
-	request(api, http.MethodPut, "/v1/rulesets", "application/json", body)
+	save(api, sets)
 	fmt.Fprintf(os.Stderr, "%s: enabled=%v (saved)\n", target, enabled)
+}
+
+// resetOne replaces one ruleset with its factory version, or adds it back if it was deleted
+// (Restore preset and Add preset on the Rules page).
+func resetOne(api, name string) {
+	defaults := getDefaults(api)
+	i := slices.IndexFunc(defaults, func(p *rules.Ruleset) bool { return strings.EqualFold(p.Name, name) })
+	if i < 0 {
+		fatal(fmt.Errorf("%q is not a factory preset; see: memento-redact-cli rules list", name))
+	}
+	save(api, merge(getRulesets(api), defaults[i:i+1]))
+	fmt.Fprintf(os.Stderr, "%s: factory version restored (saved)\n", defaults[i].Name)
+}
+
+// merge adds incoming rulesets to current ones: one with the same name is replaced in place, new ones go
+// to the end, as Import → Add on the Rules page.
+func merge(current, incoming []*rules.Ruleset) []*rules.Ruleset {
+	out := slices.Clone(current)
+	for _, set := range incoming {
+		if i := slices.IndexFunc(out, func(c *rules.Ruleset) bool { return c.Name == set.Name }); i >= 0 {
+			out[i] = set
+		} else {
+			out = append(out, set)
+		}
+	}
+	return out
+}
+
+// checkSamples prints each rule's sample lines redacted by that rule alone, as the Rules page shows them.
+func checkSamples(api string, sets []*rules.Ruleset) {
+	found := false
+	for _, set := range sets {
+		for _, r := range set.Rules {
+			samples := strings.Join(r.Samples, "\n")
+			if strings.TrimSpace(samples) == "" {
+				continue
+			}
+			found = true
+			one := *r
+			one.Enabled = true // samples are checked even when the rule is off
+			var res redactor.Result
+			decode(preview(api, samples, []*rules.Ruleset{{Name: set.Name, Enabled: true, Rules: []*rules.Rule{&one}}}, nil), &res)
+			fmt.Printf("%s / %s\n", set.Name, r.Name)
+			for i, line := range strings.Split(res.Redacted, "\n") {
+				note := ""
+				if strings.TrimSpace(line) != "" && i < len(r.Samples) && line == r.Samples[i] {
+					note = "   (not redacted)"
+				}
+				fmt.Printf("  %d  %s%s\n", i+1, line, note)
+			}
+		}
+	}
+	if !found {
+		fmt.Fprintln(os.Stderr, "no rule has sample lines")
+	}
 }
 
 func getRulesets(api string) []*rules.Ruleset {
 	var sets []*rules.Ruleset
 	decode(request(api, http.MethodGet, "/v1/rulesets", "", nil), &sets)
 	return sets
+}
+
+func getDefaults(api string) []*rules.Ruleset {
+	var sets []*rules.Ruleset
+	decode(request(api, http.MethodGet, "/v1/rulesets/defaults", "", nil), &sets)
+	return sets
+}
+
+// save replaces all saved rulesets with sets.
+func save(api string, sets []*rules.Ruleset) {
+	body, err := json.Marshal(sets)
+	if err != nil {
+		fatal(err)
+	}
+	request(api, http.MethodPut, "/v1/rulesets", "application/json", body)
 }
 
 func mark(enabled bool) string {
@@ -132,17 +327,6 @@ func mark(enabled bool) string {
 func newFlags(name string) (*flag.FlagSet, *string) {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
 	return fs, fs.String("api", getenv("API_URL", "http://localhost:8080"), "memento-redact API base URL")
-}
-
-// parseInput parses the CLI flags and resolves the payload to send.
-func parseInput(args []string) (string, []byte) {
-	fs, api := newFlags("payload")
-	input := fs.String("input", "", "payload text; defaults to stdin if empty")
-	fs.Parse(args)
-	if *input != "" {
-		return *api, []byte(*input)
-	}
-	return *api, readInput("")
 }
 
 // readInput reads a file, or stdin when path is empty or "-".
@@ -208,15 +392,21 @@ func usage() {
 
   health                          check the API
   redact  [--input TEXT]          print the redacted text (reads stdin without --input)
-  preview [--input TEXT]          print redacted text and the token map as JSON
-  rules list                      show rulesets and rules with their on/off state
+          [--rules FILE]          redact with a rules file instead of the saved rules
+          [--conversation FILE]   keep the placeholders of earlier texts, add this text's values
+  preview [same flags]            print redacted text and the token map as JSON
+  restore --conversation FILE     put the real values back into an LLM answer (stdin or --input)
+  rules list                      show rulesets and rules with their on/off state and updates
   rules export [NAME]             print saved rulesets, or only ruleset NAME, as YAML
-  rules import [FILE|-]           replace all rulesets with a YAML/JSON file (or stdin)
-  rules reset                     restore factory default rulesets
+  rules import [--add] [FILE|-]   replace all rulesets with a YAML/JSON file (or stdin);
+                                  --add adds them instead (same name replaces yours)
+  rules reset [NAME]              restore all factory presets, or only preset NAME
+  rules check [FILE]              show each rule's sample lines redacted by that rule alone
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
 
 examples:
   memento-redact-cli redact < app.log > redacted.txt
+  memento-redact-cli redact --conversation chat.json < app.log && memento-redact-cli restore --conversation chat.json < answer.txt
   memento-redact-cli rules export > rulesets.yml && $EDITOR rulesets.yml && memento-redact-cli rules import rulesets.yml
 `)
 }

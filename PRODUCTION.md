@@ -33,6 +33,7 @@ Then open `http://localhost:8080`. One process serves the UI and the API. It nee
 | Text you redact | Server memory, while the request runs; the open browser tab | Never written to disk or logs. Gone when you close or reload the tab. |
 | Answers you restore, and the conversation (the map of texts you copied) | The open browser tab only. The conversation goes to the server with each preview so numbering continues, and is not kept there. | Gone when you close or reload the tab, or click **New conversation**. |
 | Theme choice, profiles, your own debug reasons | Browser `localStorage` | Until you clear site data |
+| A CLI conversation (`--conversation FILE`) | The file you name, on the machine running the CLI, mode `0600`. It holds the real values. | Until you delete it |
 
 The log has one line per request: method, path and duration. It never contains text or rules.
 

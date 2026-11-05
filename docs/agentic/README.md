@@ -5,7 +5,7 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
 ## Layout
 
 - `cmd/server`: the HTTP server. It serves the API and the built UI (`STATIC_DIR`). On start it runs `rules.Sync`, and it exits if the rules do not load.
-- `cmd/cli`: the API client (`health`, `redact`, `preview`, `rules list|export|import|reset|enable|disable`).
+- `cmd/cli`: the API client (`health`, `redact`, `preview`, `restore`, `rules list|export|import|reset|check|enable|disable`). `restore.go` is a Go copy of `web/src/restore.ts` (restoring never goes through the server): change both, and their tests, together.
 - `config`: `config.Load()` reads settings from environment variables only; `default-rulesets.yml` holds the factory presets.
 - `internal/rules`: the Ruleset/Rule model, validation (`Compile`), matching (`Find`), YAML load and atomic save, and `Sync`. `Sync` seeds the rules on first start and upgrades unedited presets through the `preset` fingerprint.
 - `internal/redactor`: `Redact` runs all enabled rules on the original text. The longest match wins on overlaps. It numbers tokens per placeholder, ignoring case (`partNumbering` for `per_part`), and builds the map. `known` entries (an earlier map) keep their tokens and numbering continues after them; each entry carries its `placeholder` and `numbers` for that. It stops with an error when the request context ends.
