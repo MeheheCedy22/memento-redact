@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
 import { copyText } from './clipboard'
-import { NumberedText, NumberedTextarea, type Part } from './Numbered'
+import { highlight, NumberedText, NumberedTextarea } from './Numbered'
 import Restore from './Restore'
 import { remember } from './restore'
-import { debugReport, escapeRegExp, reasons, type Mark } from './debug'
+import { debugReport, reasons, type Mark } from './debug'
 import { activeProfile, applySwitches, switchesOf } from './rulesets'
 import { saveProfiles, saveReasons, savedProfiles, savedReasons } from './storage'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
@@ -28,26 +28,6 @@ const entryKey = (entry: MapEntry) => entry.token + '\u0000' + entry.original
 // select values of "New reason…" and "Save switches as…"; a name cannot contain them
 const newReason = '\u0000new'
 const newProfile = '\u0000save'
-
-// Splits the redacted text into parts and marks every placeholder; hovering one shows what it replaced.
-function highlight(text: string, map: MapEntry[]): Part[] {
-  const byToken = new Map<string, MapEntry[]>()
-  for (const entry of map) byToken.set(entry.token, [...(byToken.get(entry.token) ?? []), entry])
-  if (byToken.size === 0) return [{ text }]
-
-  const pattern = new RegExp([...byToken.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|'), 'g')
-  const parts: Part[] = []
-  let last = 0
-  for (const match of text.matchAll(pattern)) {
-    const at = match.index ?? 0
-    const token = match[0]
-    const title = (byToken.get(token) ?? []).map((e) => `${e.original}\n${e.ruleset} › ${e.rule}`).join('\n\n')
-    parts.push({ text: text.slice(last, at) }, { text: token, wrap: (t, key) => <mark key={key} data-token={token} title={title}>{t}</mark> })
-    last = at + token.length
-  }
-  parts.push({ text: text.slice(last) })
-  return parts
-}
 
 type Props = {
   // the Redact page, or the Restore page (same layout, the text pair shows an LLM answer instead)

@@ -105,8 +105,9 @@ func TestSyncSeedsThenUpgradesOnlyUneditedPresets(t *testing.T) {
 		t.Fatalf("seeded presets must be stamped: %v %+v", err, sets)
 	}
 
-	// user: flips switches on Net (not an edit), adds a word to Org (an edit), adds an own ruleset
+	// user: flips switches and adds samples on Net (not an edit), adds a word to Org (an edit), adds an own ruleset
 	sets[0].Enabled, sets[0].Rules[1].Enabled = false, true
+	sets[0].Rules[0].Samples = []string{"ip v1"}
 	sets[1].Rules[0].Patterns = append(sets[1].Rules[0].Patterns, "acme")
 	sets = append(sets, &Ruleset{Name: "Mine", Enabled: true, Rules: []*Rule{}})
 	if err := Save(path, sets); err != nil {
@@ -123,6 +124,9 @@ func TestSyncSeedsThenUpgradesOnlyUneditedPresets(t *testing.T) {
 	}
 	if got := sets[0].Rules[0].Patterns[0]; got != "v2" {
 		t.Errorf("unedited preset not upgraded: %q", got)
+	}
+	if got := sets[0].Rules[0].Samples; len(got) != 1 || got[0] != "ip v1" {
+		t.Errorf("samples lost on upgrade: %q", got)
 	}
 	if sets[0].Enabled || !sets[0].Rules[1].Enabled {
 		t.Errorf("upgrade must keep on/off switches: %+v", sets[0])

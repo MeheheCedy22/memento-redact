@@ -286,7 +286,7 @@ textarea {
 }
 
 /* pattern lists are short: a narrower gutter */
-.rule .numbered textarea, .rule .numbered .lines {
+.rule .numbered textarea, .rule .numbered .lines, .rule .samples {
   padding-left: 2.3rem;
 }
 

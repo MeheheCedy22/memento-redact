@@ -21,6 +21,8 @@ You can edit rules on the **Rules** page (one tab per ruleset), export them to Y
       keep: ''                    # optional regex; matching values are not redacted
       placeholder: '[HOST_#]'     # '#' -> 1, 2, 3 per distinct value
       per_part: false             # see "Numbering each part"
+      samples:                    # optional lines to try the rule on; redaction ignores them
+        - 'ssh web01.domain.tld'
 ```
 
 | Field | Required | Meaning |
@@ -35,6 +37,7 @@ You can edit rules on the **Rules** page (one tab per ruleset), export them to Y
 | `keep` | | A regex. Values that match it are left as they are. |
 | `placeholder` | | Replacement text. `#` becomes a number. Default: `[REDACTED_#]`. |
 | `per_part` | | Number each dot-separated part of the placeholder separately. |
+| `samples` | | Lines to try the rule on. The Rules page shows each one redacted by this rule alone as you edit, and marks lines it leaves as they were with *not redacted*. Redaction ignores them. They are not an edit: a preset with samples still updates, and keeps them. |
 
 YAML is a superset of JSON, so imports also accept JSON. In single-quoted YAML strings a backslash is literal and a quote is written as `''`.
 

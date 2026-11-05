@@ -1,5 +1,7 @@
 import type { ReactNode, TextareaHTMLAttributes } from 'react'
 import AutoTextarea from './AutoTextarea'
+import type { MapEntry } from './api'
+import { escapeRegExp } from './debug'
 
 // A run of text, optionally wrapped (e.g. in a <mark>) when shown.
 export type Part = { text: string; wrap?: (text: string, key: number) => ReactNode }
@@ -37,4 +39,24 @@ export function NumberedTextarea(props: TextareaHTMLAttributes<HTMLTextAreaEleme
       <AutoTextarea {...props} />
     </div>
   )
+}
+
+// Splits the redacted text into parts and marks every placeholder; hovering one shows what it replaced.
+export function highlight(text: string, map: MapEntry[]): Part[] {
+  const byToken = new Map<string, MapEntry[]>()
+  for (const entry of map) byToken.set(entry.token, [...(byToken.get(entry.token) ?? []), entry])
+  if (byToken.size === 0) return [{ text }]
+
+  const pattern = new RegExp([...byToken.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|'), 'g')
+  const parts: Part[] = []
+  let last = 0
+  for (const match of text.matchAll(pattern)) {
+    const at = match.index ?? 0
+    const token = match[0]
+    const title = (byToken.get(token) ?? []).map((e) => `${e.original}\n${e.ruleset} › ${e.rule}`).join('\n\n')
+    parts.push({ text: text.slice(last, at) }, { text: token, wrap: (t, key) => <mark key={key} data-token={token} title={title}>{t}</mark> })
+    last = at + token.length
+  }
+  parts.push({ text: text.slice(last) })
+  return parts
 }

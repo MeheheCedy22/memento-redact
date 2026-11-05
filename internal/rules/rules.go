@@ -41,6 +41,8 @@ type Rule struct {
 	// PerPart numbers each dot-separated part of the placeholder by its own value:
 	// [DOMAIN].[TLD] gives acme.sk -> [DOMAIN_1].[TLD_1], acme.com -> [DOMAIN_1].[TLD_2].
 	PerPart bool `yaml:"per_part,omitempty" json:"per_part,omitempty"`
+	// Samples are lines the Rules page redacts with this rule alone while you edit it; redaction ignores them.
+	Samples []string `yaml:"samples,omitempty" json:"samples,omitempty"`
 
 	re   *regexp.Regexp
 	keep *regexp.Regexp
@@ -252,26 +254,26 @@ func Sync(path, defaultPath string) error {
 	return Save(path, sets)
 }
 
-// withSwitches copies the on/off state of old onto preset and its rules with the same names.
+// withSwitches copies the on/off state and samples of old onto preset and its rules with the same names.
 func withSwitches(preset, old *Ruleset) *Ruleset {
 	preset.Enabled = old.Enabled
 	for _, r := range preset.Rules {
 		for _, o := range old.Rules {
 			if r.Name == o.Name {
-				r.Enabled = o.Enabled
+				r.Enabled, r.Samples = o.Enabled, o.Samples
 			}
 		}
 	}
 	return preset
 }
 
-// fingerprint identifies a ruleset's content, ignoring on/off switches.
+// fingerprint identifies a ruleset's content, ignoring on/off switches and samples.
 func fingerprint(set *Ruleset) string {
 	c := *set
 	c.Enabled, c.Preset, c.Rules = false, "", nil
 	for _, r := range set.Rules {
 		rc := *r
-		rc.Enabled = false
+		rc.Enabled, rc.Samples = false, nil
 		c.Rules = append(c.Rules, &rc)
 	}
 	data, _ := json.Marshal(&c)

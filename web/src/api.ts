@@ -8,6 +8,8 @@ export type Rule = {
   placeholder: string
   // number each dot-separated placeholder part by its own value
   per_part?: boolean
+  // lines the Rules page redacts with this rule alone while editing; redaction ignores them
+  samples?: string[]
 }
 
 export type Ruleset = {

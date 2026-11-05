@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AutoTextarea from './AutoTextarea'
-import { NumberedTextarea } from './Numbered'
-import { api, errorText, exportUrl, type Rule, type Ruleset } from './api'
+import { highlight, NumberedText, NumberedTextarea, type Part } from './Numbered'
+import { api, errorText, exportUrl, type PreviewResult, type Rule, type Ruleset } from './api'
 import { mergeRulesets } from './rulesets'
 
 export const updateSet = (sets: Ruleset[], i: number, patch: Partial<Ruleset>) =>
@@ -37,6 +37,61 @@ const cheatSheet: [string, string][] = [
   ['( )', 'group: only this part is replaced'],
   ['(?: )', 'group for | or repeats that does not change what is replaced'],
 ]
+
+// Sample lines of one rule, redacted by that rule alone after every edit, so you see at once what a change does.
+function Samples({ rule, setName, onChange }: { rule: Rule; setName: string; onChange: (samples?: string[]) => void }) {
+  const text = rule.samples?.join('\n') ?? ''
+  const [checked, setChecked] = useState<{ input: string; result: PreviewResult } | null>(null)
+  useEffect(() => {
+    if (!text.trim()) {
+      setChecked(null)
+      return
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      api
+        .preview(text, [{ name: setName, enabled: true, rules: [{ ...rule, enabled: true }] }], [], controller.signal)
+        .then((result) => setChecked({ input: text, result }))
+        .catch(() => {
+          // an invalid rule: the error is shown above the tabs
+          if (!controller.signal.aborted) setChecked(null)
+        })
+    }, 250)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [rule, setName])
+
+  const parts: Part[] = []
+  if (checked) {
+    // shortcut: a match across lines (private keys) shifts the lines after it, so "not redacted" can be off there
+    const inputs = checked.input.split('\n')
+    checked.result.redacted.split('\n').forEach((line, i) => {
+      if (i > 0) parts.push({ text: '\n' })
+      parts.push(...highlight(line, checked.result.map))
+      if (line.trim() && line === inputs[i]) parts.push({ text: '  not redacted', wrap: (t, key) => <span key={key} className="hint">{t}</span> })
+    })
+  }
+  return (
+    <>
+      <NumberedTextarea
+        className="mono"
+        rows={1}
+        value={text}
+        onChange={(e) => onChange(e.target.value ? e.target.value.split('\n') : undefined)}
+        placeholder="Sample lines to try the rule on"
+        spellCheck={false}
+        aria-label="Sample lines"
+      />
+      {checked && (
+        <div className={`output samples mono ${checked.input === text ? '' : 'stale'}`} aria-label="Sample lines redacted by this rule" aria-live="polite">
+          <NumberedText parts={parts} />
+        </div>
+      )}
+    </>
+  )
+}
 
 const newRule = (): Rule => ({ name: 'New rule', enabled: true, type: 'words', patterns: [], placeholder: '[NAME_#]' })
 
@@ -95,6 +150,7 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, er
           <li><b>Placeholder</b>: <code>#</code> becomes a number per distinct value; repeats keep their number. Without <code>#</code> every value gets the same text.</li>
           <li><b>Number each part</b> (placeholders with dots): each part is numbered by its own value, so <code>acme.sk</code> → <code>[DOMAIN_1].[TLD_1]</code> and <code>acme.com</code> → <code>[DOMAIN_1].[TLD_2]</code>.</li>
           <li><b>Keep</b>: matched values that also match this regex stay as they are.</li>
+          <li><b>Sample lines</b> (under the patterns): lines to try the rule on. Each is shown redacted by that rule alone as you edit; <i>not redacted</i> marks a line it left as it was. They are saved with the rule and do not count as an edit of a preset.</li>
           <li>When matches overlap, the longest wins.</li>
           <li>Unedited presets update automatically after an upgrade. Edited ones show <i>Update available</i>.</li>
         </ul>
@@ -252,15 +308,18 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, er
                     <option value="words">words</option>
                     <option value="regex">regex</option>
                   </select>
-                  <NumberedTextarea
-                    className="mono"
-                    rows={1}
-                    value={rule.patterns.join('\n')}
-                    onChange={(e) => change({ patterns: e.target.value.split('\n') })}
-                    placeholder={rule.type === 'words' ? 'web01\nProject Phoenix' : '\\bSRV-\\d{3}\\b'}
-                    spellCheck={false}
-                    aria-label="Patterns"
-                  />
+                  <div className="stack">
+                    <NumberedTextarea
+                      className="mono"
+                      rows={1}
+                      value={rule.patterns.join('\n')}
+                      onChange={(e) => change({ patterns: e.target.value.split('\n') })}
+                      placeholder={rule.type === 'words' ? 'web01\nProject Phoenix' : '\\bSRV-\\d{3}\\b'}
+                      spellCheck={false}
+                      aria-label="Patterns"
+                    />
+                    <Samples rule={rule} setName={set.name} onChange={(samples) => change({ samples })} />
+                  </div>
                   <div className="stack">
                     <input className="mono" value={rule.placeholder} onChange={(e) => change({ placeholder: e.target.value })} aria-label="Placeholder" />
                     <label
