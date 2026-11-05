@@ -27,7 +27,7 @@ test('restores only the marked values and keeps words lists out', () => {
     map,
     [
       { entry: map[0], reason: 'false positive' },
-      { entry: map[2], reason: 'custom', note: ' a.sk is our test domain ' },
+      { entry: map[2], reason: 'wrong number', note: ' a.sk is our test domain ' },
     ],
     ['jdoe'],
     sets,
@@ -45,7 +45,8 @@ test('restores only the marked values and keeps words lists out', () => {
    redacted:   [HOST_1].acme again
    unredacted: web01.acme again
 
-2. custom (a.sk is our test domain): [DOMAIN] = "a.sk", 1x
+2. wrong number (one value got several numbers, or several values share one): [DOMAIN] = "a.sk", 1x
+   note: a.sk is our test domain
    rule: Org › Domains, words, placeholder [DOMAIN]
    line:       see [DOMAIN] and [DOMAIN]
 
@@ -55,8 +56,8 @@ test('restores only the marked values and keeps words lists out', () => {
   )
 })
 
-test('a custom reason without a description says so', () => {
-  assert.match(debugReport('[HOST_1]', map, [{ entry: map[0], reason: 'custom' }], [], []), /^1\. custom \(no description\): \[HOST_1\]/m)
+test("the user's own reason has no built-in meaning, and an empty note is left out", () => {
+  assert.match(debugReport('[HOST_1]', map, [{ entry: map[0], reason: 'test host', note: '  ' }], [], []), /^1\. test host: \[HOST_1\] = "web01", 2x\n {3}rule:/m)
 })
 
 test('works without marks', () => {

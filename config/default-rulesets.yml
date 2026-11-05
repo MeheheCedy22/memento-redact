@@ -71,8 +71,16 @@
       patterns:
         - '\barn:aws[\w-]*:[\w-]+:[\w-]*:(\d{12}):'
         - '(?i)/subscriptions/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
-        - '(?i)\b[\w-]*(?:account|subscription|tenant)[_-]?id["'']?[ \t]*[:=][ \t]*["'']?([\w-]{8,})'
+        - '(?i)\b[\w-]*(?:account|subscription|tenant)[_-]?id["'']?[ \t]*[:=][ \t]*["''`“„«‘]?([\w-]{8,})'
       placeholder: '[CLOUD_ID_#]'
+    - name: Git repositories
+      description: Repository path of git remotes (git@host:path, clone URLs ending in .git). The host stays.
+      enabled: true
+      type: regex
+      patterns:
+        - '\bgit@[\w.-]+:([\w.~-]+(?:/[\w.~-]+)+)'
+        - '(?i)\b(?:https?|ssh|git)://(?:[^@/\s]+@)?[\w.-]+(?::\d+)?/([\w.~-]+(?:/[\w.~-]+)*\.git)\b'
+      placeholder: '[REPO_#]'
     - name: MAC address
       description: Off by default; rarely matters outside your network.
       enabled: false
@@ -89,6 +97,8 @@
       type: regex
       patterns:
         - '(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b'
+      # git@host is the user of a git remote, not a mailbox
+      keep: '(?i)^git@'
       placeholder: '[EMAIL_#]'
     - name: Phone number
       description: International and 3-3-3/4 grouped numbers.
@@ -99,11 +109,15 @@
         - '\+\d{9,14}\b'
       placeholder: '[PHONE_#]'
     - name: Usernames
-      description: user=x, DOMAIN\x, /home/x, C:\Users\x, XML config entries. $VAR and $(…) are kept.
+      description: user=x, DOMAIN\x, /home/x, C:\Users\x, XML config entries, also in backticks or typographic quotes. $VAR, $(…) and PowerShell $user = Some-Command are kept.
       enabled: true
       type: regex
       patterns:
-        - '(?i)\b[\w.-]*(?:user(?:name)?|login|uid)["''\]]{0,2}[ \t]*(?:=>|[:=])[ \t]*(?:"([^"\r\n]+)"|''([^''\r\n]+)''|["'']?([^\s"'',;&{\[(][^\s"'',;&]*))'
+        # PowerShell $x = Some-Command …: a bare word there is a command call, not a value; the empty group makes this match redact nothing
+        - '(?i)\$[\w.-]*(?:user(?:name)?|login|uid)[ \t]*=[ \t]*()[a-z_][\w-]*'
+        # a value in backticks after : := => or a spaced =; VAR=`cmd` (shell command substitution) is left to the next pattern and kept
+        - '(?i)\b[\w.-]*(?:user(?:name)?|login|uid)["''\]]{0,2}(?:[ \t]*(?::=|=>|==|:)[ \t]*|[ \t]+==?[ \t]*|==?[ \t]+)`([^`\r\n]+)`'
+        - '(?i)\b[\w.-]*(?:user(?:name)?|login|uid)["''\]]{0,2}[ \t]*(?:=>|[:=])[ \t]*(?:"([^"\r\n]+)"|''([^''\r\n]+)''|[“„«‘‹]([^”“»’›\r\n]+)[”“»’›]|["'']?([^\s"'',;&{\[(][^\s"'',;&]*))'
         - '(?i)\bkey=["''][\w.-]*(?:user(?:name)?|login)["''][ \t]+value=["'']([^"''\r\n]*)["'']'
         - '(?i)[\w.-]*(?:user(?:name)?|login)["'']?>([^<\r\n]+)</'
         - '\b[A-Z][A-Z0-9-]{1,14}\\([a-z][\w.-]{1,63})'
@@ -136,12 +150,16 @@
   enabled: true
   rules:
     - name: Key-value secrets
-      description: 'Keys containing pass, pwd, heslo, secret, token, credential or *key, followed by = : := => or ==; XML config entries. $VAR, ${VAR} and $(…) are kept unless they echo a literal.'
+      description: 'Keys containing pass, pwd, heslo, secret, token, credential or *key, followed by = : := => or ==, also in backticks or typographic quotes; XML config entries. $VAR, ${VAR}, $(…) and PowerShell $x = Some-Command are kept unless they echo a literal.'
       enabled: true
       type: regex
       patterns:
+        # PowerShell $x = Some-Command …: a bare word there is a command call, not a value; the empty group makes this match redact nothing
+        - '(?i)\$[\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|contrase(?:ñ|n)a|(?:api|auth|access|account|service|client|priv|private|db|database|signing|encryption|master)[_.-]?key)[\w.-]*[ \t]*=[ \t]*()[a-z_][\w-]*'
         - '(?i)\b[\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|(?:api|auth|access|private|client|db)[_.-]?key)[\w.-]*[ \t]*=[ \t]*["'']?\$\((?:echo|printf)(?:[ \t]+-\w+)*[ \t]+("[^"]+"|''[^'']+''|[^\s|);"''`$]+)'
-        - '(?i)\b[\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|contrase(?:ñ|n)a|(?:api|auth|access|account|service|client|priv|private|db|database|signing|encryption|master)[_.-]?key)[\w.-]*["''\]]{0,2}[ \t]*(?::=|=>|==|[:=])[ \t]*(?:"([^"\r\n]*)"|''([^''\r\n]*)''|["'']?([^\s"'',;&{\[(][^\s"'',;&]*))'
+        # a value in backticks after : := => or a spaced =; VAR=`cmd` (shell command substitution) is left to the next pattern and kept
+        - '(?i)\b[\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|contrase(?:ñ|n)a|(?:api|auth|access|account|service|client|priv|private|db|database|signing|encryption|master)[_.-]?key)[\w.-]*["''\]]{0,2}(?:[ \t]*(?::=|=>|==|:)[ \t]*|[ \t]+==?[ \t]*|==?[ \t]+)`([^`\r\n]+)`'
+        - '(?i)\b[\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|contrase(?:ñ|n)a|(?:api|auth|access|account|service|client|priv|private|db|database|signing|encryption|master)[_.-]?key)[\w.-]*["''\]]{0,2}[ \t]*(?::=|=>|==|[:=])[ \t]*(?:"([^"\r\n]*)"|''([^''\r\n]*)''|[“„«‘‹]([^”“»’›\r\n]+)[”“»’›]|["'']?([^\s"'',;&{\[(][^\s"'',;&]*))'
         - '(?i)\bkey=["''][\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|(?:api|auth|access|private|client|db)[_.-]?key)[\w.-]*["''][ \t]+value=["'']([^"''\r\n]*)["'']'
         - '(?i)[\w.-]*(?:pass|pwd|heslo|secret|token|credential|creds|(?:api|auth|access|private|client|db)[_.-]?key)[\w.-]*["'']?>([^<\r\n]+)</'
       # values that only reference a variable or command output hold no secret themselves

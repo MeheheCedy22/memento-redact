@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
-import { debugReport, escapeRegExp, reasons, type Mark, type Reason } from './debug'
+import { debugReport, escapeRegExp, reasons, saveReasons, savedReasons, type Mark } from './debug'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
 
 const example = `PS> Get-VM | Select Name, PowerState, @{N='IP';E={$_.Guest.IPAddress -join ', '}}
@@ -19,6 +19,8 @@ Owner: jane.doe@domain.tld, +420 777 123 456
 `
 
 const entryKey = (entry: MapEntry) => entry.token + '\u0000' + entry.original
+// select value of "New reason…"; a reason name cannot contain it
+const newReason = '\u0000new'
 
 // Copies value and reports the outcome through setNote; on failure the clipboard keeps its old content.
 async function copyText(value: string, setNote: (note: string) => void) {
@@ -78,6 +80,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
   const [reported, setReported] = useState(new Map<string, Omit<Mark, 'entry'>>())
   const [missed, setMissed] = useState<string[]>([])
   const [reportNote, setReportNote] = useState('')
+  const [ownReasons, setOwnReasons] = useState(savedReasons)
   const outputRef = useRef<HTMLDivElement>(null)
   const jumps = useRef(new Map<string, number>())
 
@@ -93,18 +96,34 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
   }
   const replacements = result?.map.reduce((sum, entry) => sum + entry.count, 0) ?? 0
 
-
   const marks: Mark[] = (result?.map ?? []).flatMap((entry) => {
     const marked = reported.get(entryKey(entry))
     return marked ? [{ entry, ...marked }] : []
   })
   const report = marks.length || missed.length ? debugReport(result?.redacted ?? '', result?.map ?? [], marks, missed, draft) : ''
 
-  function mark(entry: MapEntry, reason: Reason | '', note = reported.get(entryKey(entry))?.note) {
+  function mark(entry: MapEntry, reason: string, note = reported.get(entryKey(entry))?.note) {
     const next = new Map(reported)
     if (reason) next.set(entryKey(entry), { reason, note })
     else next.delete(entryKey(entry))
     setReported(next)
+  }
+
+  // Asks for a name, saves it as the user's own reason and marks entry with it.
+  function addReason(entry: MapEntry) {
+    const name = prompt('Name of the new reason')?.trim()
+    if (!name) return
+    if (!reasons.has(name) && !ownReasons.includes(name)) {
+      setOwnReasons([...ownReasons, name])
+      saveReasons([...ownReasons, name])
+    }
+    mark(entry, name)
+  }
+
+  function forgetReason(name: string) {
+    const next = ownReasons.filter((r) => r !== name)
+    setOwnReasons(next)
+    saveReasons(next)
   }
 
   // Adds the text selected in the redacted output as a false negative.
@@ -121,7 +140,7 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
 
   return (
     <main className="workspace">
-      {/* one scroll area for both columns, so long texts stay side by side and compact */}
+      {/* one scroll area for both columns, so long texts stay side by side; its height changes only by dragging the corner */}
       <div className="pair">
         <section>
           <div className="section-head">
@@ -131,7 +150,6 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
           </div>
           <AutoTextarea
             className="mono"
-            rows={12}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Paste text here. It is redacted as you type and never stored."
@@ -222,21 +240,35 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                       <td>{entry.count}</td>
                       {debug && (
                         <td>
-                          <select value={reported.get(entryKey(entry))?.reason ?? ''} onChange={(e) => mark(entry, e.target.value as Reason | '')} aria-label={`Report ${entry.token}`}>
+                          <select
+                            value={reported.get(entryKey(entry))?.reason ?? ''}
+                            onChange={(e) => (e.target.value === newReason ? addReason(entry) : mark(entry, e.target.value))}
+                            aria-label={`Report ${entry.token}`}
+                          >
                             <option value="">—</option>
-                            {Object.entries(reasons).map(([reason, meaning]) => (
+                            {[...reasons].map(([reason, meaning]) => (
                               <option key={reason} value={reason} title={meaning}>
                                 {reason}
                               </option>
                             ))}
+                            {ownReasons.length > 0 && (
+                              <optgroup label="Your reasons">
+                                {ownReasons.map((reason) => (
+                                  <option key={reason} value={reason}>
+                                    {reason}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <option value={newReason}>New reason…</option>
                           </select>
-                          {reported.get(entryKey(entry))?.reason === 'custom' && (
+                          {reported.has(entryKey(entry)) && (
                             <AutoTextarea
                               rows={1}
                               value={reported.get(entryKey(entry))?.note ?? ''}
-                              onChange={(e) => mark(entry, 'custom', e.target.value.replace(/\r?\n/g, ' '))}
-                              placeholder="What is wrong?"
-                              aria-label={`What is wrong with ${entry.token}`}
+                              onChange={(e) => mark(entry, reported.get(entryKey(entry))?.reason ?? '', e.target.value.replace(/\r?\n/g, ' '))}
+                              placeholder="Description (optional)"
+                              aria-label={`Description for ${entry.token}`}
                             />
                           )}
                         </td>
@@ -272,6 +304,16 @@ export default function Workspace({ text, setText, result, upToDate, previewErro
                   Copy report
                 </button>
               </div>
+              {ownReasons.length > 0 && (
+                <p className="muted">
+                  Your reasons:{' '}
+                  {ownReasons.map((reason) => (
+                    <button key={reason} className="chip" onClick={() => forgetReason(reason)} aria-label={`Remove reason ${reason}`} title="Remove this reason">
+                      {reason} ✕
+                    </button>
+                  ))}
+                </p>
+              )}
               {report && (
                 <>
                   <AutoTextarea className="mono" rows={1} value={report} readOnly aria-label="Debug report" />

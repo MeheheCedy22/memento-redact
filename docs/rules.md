@@ -104,12 +104,16 @@ If a part contains `#`, the number replaces it (`[D#].[T#]` → `[D1].[T1]`). Ot
 
 `$VAR`, `${VAR}`, `$(command)`, `` `command` ``, `%VAR%`, `$env:VAR` and `{{ template }}` hold no secret themselves, so the presets' *keep* regex leaves them alone. A default value (`${VAR:-literal}`) or a literal inside `$(echo …)` is still redacted.
 
+PowerShell `$password = Read-Host -AsSecureString` is kept too: an unquoted word after `$x =` is a command call there, not a value. `$password = 'hunter2'` is redacted.
+
+Backticks depend on the separator. In shell, `` PASS=`cat file` `` (no spaces around `=`) runs a command, so it is kept. After `:`, `:=`, `=>` or a spaced `=`, backticks are quotes (Markdown, Go raw strings), so `` password: `hunter2` `` becomes `` password: `[SECRET_1]` ``. Typographic quotes (`“…”`, `„…“`, `‘…’`, `«…»`) work like `"…"`: only the inside is replaced.
+
 ## Presets
 
 | Ruleset | What it finds |
 |---|---|
 | Organization | Hosts in your domain, the domain itself, your own list of names and codenames |
-| Network | Public IPv4 and IPv6 (private ranges kept), internal hostnames, cloud account IDs, MAC addresses (off by default) |
+| Network | Public IPv4 and IPv6 (private ranges kept), internal hostnames, cloud account IDs, git repository paths (`git@host:path`, clone URLs ending in `.git`), MAC addresses (off by default) |
 | Personal data | Email, phone numbers, usernames, payment cards, IBAN, CZ/SK birth numbers |
 | Secrets | Key-value secrets, command-line passwords, PowerShell SecureString, auth headers, credentials in URLs and curl, private keys (PEM, OpenSSH, SSH2, PGP, PuTTY, age; also cut off or base64-encoded), well-known token formats, webhook URLs |
 

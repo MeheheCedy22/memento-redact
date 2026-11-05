@@ -209,11 +209,19 @@ textarea {
   margin-top: 1.5rem;
 }
 
-/* long content scrolls inside its area instead of stretching the page */
+/* a fixed height (the size of an empty page) that the user changes by dragging the bottom-right corner */
 .pair {
-  max-height: 75vh;
+  height: 18rem;
+  min-height: 8rem;
+  resize: vertical;
   overflow: auto;
+  container-type: size;
   padding: 0 3px 3px;
+}
+
+/* both boxes fill the window; longer text scrolls the pair as one */
+.pair textarea, .pair .output {
+  min-height: calc(100cqh - 2.75rem);
 }
 
 .pair .section-head {
@@ -247,7 +255,6 @@ textarea {
 }
 
 .output {
-  min-height: 12rem;
   padding: 0.3rem 0.45rem;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -322,6 +329,12 @@ fieldset.off > label, .ruleset.off .rule, .rule.off {
 
 .map textarea {
   margin-top: 0.25rem;
+}
+
+button.chip {
+  margin: 0 0.3rem 0.3rem 0;
+  padding: 0 0.5rem;
+  border-radius: 999px;
 }
 
 .debug .section-head {

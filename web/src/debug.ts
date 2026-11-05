@@ -1,17 +1,34 @@
 import type { MapEntry, Ruleset } from './api'
 
-// Reasons a placeholder can be wrong, shown in the map in debug mode.
-export const reasons = {
-  'false positive': 'should not be redacted',
-  'too much': 'the redaction covers more than the sensitive part',
-  'too little': 'part of the sensitive value stays visible',
-  'wrong type': 'right to redact, but the wrong rule or placeholder',
-  'wrong number': 'one value got several numbers, or several values share one',
-  custom: 'describe it yourself',
+// Reasons a placeholder can be wrong, shown in the map in debug mode; the user can save more.
+export const reasons = new Map([
+  ['false positive', 'should not be redacted'],
+  ['too much', 'the redaction covers more than the sensitive part'],
+  ['too little', 'part of the sensitive value stays visible'],
+  ['wrong type', 'right to redact, but the wrong rule or placeholder'],
+  ['wrong number', 'one value got several numbers, or several values share one'],
+  ['other', 'something else'],
+])
+// reason is a key of reasons or one of the user's own reasons; note is an optional description
+export type Mark = { entry: MapEntry; reason: string; note?: string }
+
+// The user's own reasons live in this browser only.
+export function savedReasons(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem('debugReasons') ?? '[]')
+    return Array.isArray(list) ? list.filter((r): r is string => typeof r === 'string') : []
+  } catch {
+    return []
+  }
 }
-export type Reason = keyof typeof reasons
-// note is the description for the custom reason
-export type Mark = { entry: MapEntry; reason: Reason; note?: string }
+
+export function saveReasons(list: string[]) {
+  try {
+    localStorage.setItem('debugReasons', JSON.stringify(list))
+  } catch {
+    // storage unavailable (private mode): the reasons last until reload
+  }
+}
 
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -37,8 +54,9 @@ export function debugReport(redacted: string, map: MapEntry[], marks: Mark[], mi
   let n = 0
   for (const { entry, reason, note } of marks) {
     const rule = sets.find((s) => s.name === entry.ruleset)?.rules.find((r) => r.name === entry.rule)
-    const why = reason === 'custom' ? note?.trim() || 'no description' : reasons[reason]
-    out.push(`${++n}. ${reason} (${why}): ${entry.token} = ${JSON.stringify(entry.original)}, ${entry.count}x`)
+    const meaning = reasons.has(reason) ? ` (${reasons.get(reason)})` : ''
+    out.push(`${++n}. ${reason}${meaning}: ${entry.token} = ${JSON.stringify(entry.original)}, ${entry.count}x`)
+    if (note?.trim()) out.push(`   note: ${note.trim()}`)
     out.push(`   rule: ${entry.ruleset} › ${entry.rule}` + (rule ? `, ${rule.type}, placeholder ${rule.placeholder}${rule.per_part ? ', number each part' : ''}` : ''))
     // a words list is your list of sensitive names, so only regexes go into the report
     if (rule?.type === 'regex') {
