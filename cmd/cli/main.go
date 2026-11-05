@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -63,7 +64,11 @@ func runRules(args []string) {
 			}
 		}
 	case "export":
-		os.Stdout.Write(request(*api, http.MethodGet, "/v1/rulesets?format=yaml", "", nil))
+		path := "/v1/rulesets?format=yaml"
+		if name := fs.Arg(0); name != "" {
+			path += "&name=" + url.QueryEscape(name)
+		}
+		os.Stdout.Write(request(*api, http.MethodGet, path, "", nil))
 	case "import":
 		data := readInput(fs.Arg(0))
 		request(*api, http.MethodPut, "/v1/rulesets", "application/yaml", data)
@@ -205,7 +210,7 @@ func usage() {
   redact  [--input TEXT]          print the redacted text (reads stdin without --input)
   preview [--input TEXT]          print redacted text and the token map as JSON
   rules list                      show rulesets and rules with their on/off state
-  rules export                    print saved rulesets as YAML
+  rules export [NAME]             print saved rulesets, or only ruleset NAME, as YAML
   rules import [FILE|-]           replace all rulesets with a YAML/JSON file (or stdin)
   rules reset                     restore factory default rulesets
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")

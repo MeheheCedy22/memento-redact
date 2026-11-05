@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -115,13 +116,28 @@ func makePreviewHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 }
 
 // makeGetRulesetsHandler returns the saved rulesets as JSON, or as YAML with ?format=yaml.
+// ?name= returns only that ruleset (any case), still as a list so the file can be imported back.
 func makeGetRulesetsHandler(store *ruleStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		sets := store.get()
+		if name := r.URL.Query().Get("name"); name != "" {
+			var picked []*rules.Ruleset
+			for _, set := range sets {
+				if strings.EqualFold(set.Name, name) {
+					picked = append(picked, set)
+				}
+			}
+			if picked == nil {
+				http.Error(w, fmt.Sprintf("ruleset %q not found", name), http.StatusNotFound)
+				return
+			}
+			sets = picked
+		}
 		if r.URL.Query().Get("format") != "yaml" {
-			writeJSON(w, store.get())
+			writeJSON(w, sets)
 			return
 		}
-		data, err := rules.Marshal(store.get())
+		data, err := rules.Marshal(sets)
 		if err != nil {
 			http.Error(w, "encode error", http.StatusInternalServerError)
 			return

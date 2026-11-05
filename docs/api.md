@@ -18,7 +18,7 @@ The web UI and the CLI use the same HTTP API and the same redaction code. Anythi
 |---|---|---|
 | GET | `/health` | Liveness check: `{"status":"ok"}` |
 | POST | `/v1/preview` | Redact text and return the map |
-| GET | `/v1/rulesets` | Saved rulesets as JSON, or YAML with `?format=yaml` |
+| GET | `/v1/rulesets` | Saved rulesets as JSON, or YAML with `?format=yaml`; one ruleset with `?name=` |
 | PUT | `/v1/rulesets` | Replace all saved rulesets |
 | POST | `/v1/rulesets/parse` | Check a rules file and return it as JSON, without saving |
 | GET | `/v1/rulesets/defaults` | Factory presets (read only) |
@@ -57,7 +57,7 @@ curl -X POST --data 'ip 8.8.8.8, mail jane@corp.com' localhost:8080/v1/preview
 
 ### GET /v1/rulesets
 
-Returns the saved rulesets as a JSON array; the format is described in [rules.md](rules.md#format). With `?format=yaml` it returns YAML, the same file that **Export** downloads.
+Returns the saved rulesets as a JSON array; the format is described in [rules.md](rules.md#format). With `?format=yaml` it returns YAML, the same file that **Export** downloads. With `?name=Network` it returns only that ruleset (any case), still as a list, so the file can be imported; `404` if there is none. That is the file a ruleset's own **Export** downloads.
 
 ### PUT /v1/rulesets
 
@@ -91,7 +91,7 @@ memento-redact-cli <command> [--api URL]
   redact  [--input TEXT]          print the redacted text (reads stdin without --input)
   preview [--input TEXT]          print redacted text and the token map as JSON
   rules list                      show rulesets and rules with their on/off state
-  rules export                    print saved rulesets as YAML
+  rules export [NAME]             print saved rulesets, or only ruleset NAME, as YAML
   rules import [FILE|-]           replace all rulesets with a YAML/JSON file (or stdin)
   rules reset                     restore factory default rulesets
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
@@ -100,6 +100,7 @@ memento-redact-cli <command> [--api URL]
 - API URL: `--api`, else the `API_URL` environment variable, else `http://localhost:8080`.
 - On an error it prints the server's message to stderr and exits with code 1. Requests time out after 20 seconds.
 - `redact` prints only the redacted text, with no extra newline, so it works in pipes.
+- `rules export NAME` prints one ruleset (any case). `rules import` replaces **all** rulesets, so to add one exported ruleset to yours use **Import…** → **Add** on the Rules page.
 - `rules enable|disable` ignores case in names. It reads all saved rules, flips one switch and saves them all back. If the Rules page is open with unsaved edits, its next **Save** overwrites this change.
 
 ```bash

@@ -42,6 +42,7 @@ const newRule = (): Rule => ({ name: 'New rule', enabled: true, type: 'words', p
 
 type Props = {
   draft: Ruleset[]
+  saved: Ruleset[]
   setDraft: (sets: Ruleset[]) => void
   defaults: Ruleset[]
   hits: Map<string, number>
@@ -50,7 +51,7 @@ type Props = {
   onReset: () => void
 }
 
-export default function RulesEditor({ draft, setDraft, defaults, hits, error, busy, onReset }: Props) {
+export default function RulesEditor({ draft, saved, setDraft, defaults, hits, error, busy, onReset }: Props) {
   const fileInput = useRef<HTMLInputElement>(null)
   const importDialog = useRef<HTMLDialogElement>(null)
   const [picked, setPicked] = useState(0)
@@ -198,6 +199,11 @@ export default function RulesEditor({ draft, setDraft, defaults, hits, error, bu
                 <span className="note" title="The factory version changed. Restore preset to get it; it replaces your edits in this ruleset.">
                   Update available
                 </span>
+              )}
+              {saved.some((s) => s.name === set.name) && (
+                <a className="button" href={`${exportUrl}&name=${encodeURIComponent(set.name)}`} download={`${set.name}.yml`} title="Download this ruleset as saved, as YAML. Unsaved changes are not included.">
+                  Export
+                </a>
               )}
               {preset && (
                 <button onClick={() => setDraft(updateSet(draft, i, preset))} title="Replace this ruleset with its factory version.">

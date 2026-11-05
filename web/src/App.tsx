@@ -154,6 +154,7 @@ function App() {
       ) : (
         <RulesEditor
           draft={draft}
+          saved={saved ?? []}
           setDraft={setDraft}
           defaults={defaults}
           hits={hits}

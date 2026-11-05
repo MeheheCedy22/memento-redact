@@ -144,6 +144,27 @@ func TestRulesetsPersistAcrossRestartsAndInvalidSavesAreRejected(t *testing.T) {
 	}
 }
 
+func TestExportOneRuleset(t *testing.T) {
+	h := newHandler(t, newTestConfig(t))
+	put := `[{"name":"Org","enabled":true,"rules":[{"name":"w","enabled":true,"type":"words","patterns":["Phoenix"]}]},
+		{"name":"Other","enabled":true,"rules":[{"name":"w","enabled":true,"type":"words","patterns":["Atlas"]}]}]`
+	if rec := do(h, http.MethodPut, "/v1/rulesets", "application/json", put); rec.Code != http.StatusOK {
+		t.Fatalf("put: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := do(h, http.MethodGet, "/v1/rulesets?format=yaml&name=org", "", "")
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "Phoenix") || strings.Contains(body, "Atlas") {
+		t.Fatalf("one ruleset: %d %q", rec.Code, body)
+	}
+	// the file is still a list, so it can be imported
+	if sets, err := rules.Parse([]byte(body)); err != nil || len(sets) != 1 {
+		t.Fatalf("export does not parse back: %v %v", sets, err)
+	}
+	if rec := do(h, http.MethodGet, "/v1/rulesets?name=missing", "", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing ruleset: expected 404, got %d", rec.Code)
+	}
+}
+
 func TestParseChecksAFileWithoutSaving(t *testing.T) {
 	h := newHandler(t, newTestConfig(t))
 	file := "- name: Extra\n  enabled: true\n  rules:\n    - {name: ids, enabled: true, type: regex, patterns: ['ID-\\d+']}\n"
