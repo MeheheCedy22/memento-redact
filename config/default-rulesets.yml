@@ -181,11 +181,22 @@
       keep: *refs
       placeholder: '[CREDENTIALS_#]'
     - name: Private keys
-      description: PEM, OpenSSH and PGP private key blocks.
+      description: PEM, OpenSSH, SSH2, PGP and PuTTY private keys, also cut off or base64-encoded as in Kubernetes secrets; age secret keys.
       enabled: true
       type: regex
       patterns:
-        - '-----BEGIN[ A-Z0-9_]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END[ A-Z0-9_]{0,100}PRIVATE KEY(?: BLOCK)?-----'
+        # a whole block, also inside JSON with escaped line breaks
+        - '-{4,5} ?BEGIN[ A-Z0-9_]{0,100}(?:PRIVATE|SECRET) KEY(?: BLOCK)? ?-{4,5}[\s\S]*?-{4,5} ?END[ A-Z0-9_]{0,100}(?:PRIVATE|SECRET) KEY(?: BLOCK)? ?-{4,5}'
+        # a block cut off before its END line, inside JSON: the header and the escaped lines after it
+        - '-{4,5} ?BEGIN[ A-Z0-9_]{0,100}(?:PRIVATE|SECRET) KEY(?: BLOCK)? ?-{4,5}(?:(?:\\r)?\\n[\w+/=:, -]*)+'
+        # a block cut off before its END line: the header and the whole key or armor-header lines after it
+        # shortcut: a key line with other text after it on the same line stays visible; widen the line pattern if that shows up
+        - '(?m)-{4,5} ?BEGIN[ A-Z0-9_]{0,100}(?:PRIVATE|SECRET) KEY(?: BLOCK)? ?-{4,5}(?:(?:\r?\n)+(?:[A-Za-z0-9+/=]+|[\w-]+: [^\r\n]*)\r?$)+'
+        # PuTTY .ppk: the lines after Private-Lines
+        - '(?m)Private-Lines: \d+\r?\n((?:[A-Za-z0-9+/=]+\r?\n)*[A-Za-z0-9+/=]+)\r?$'
+        # base64 of a PEM key: "-----BEGIN " then "PRIVATE KEY" or "SECRET KEY" encoded at each of the 3 byte offsets
+        - '\bLS0tLS1CRUdJTi[A-Za-z0-9+/]{0,40}?(?:UFJJVkFURSBL|SVZBVEUgS0VZ|UklWQVRFIEtF|U0VDUkVUIEtF|Q1JFVCBL|RUNSRVQgS0VZ)[A-Za-z0-9+/]*={0,2}'
+        - '\bAGE-SECRET-KEY-1[0-9A-Z]{58}\b'
       placeholder: '[PRIVATE_KEY_#]'
     - name: Well-known token formats
       description: Fixed-prefix tokens of AWS, GitHub, GitLab, Slack, Stripe, Google, OpenAI/Anthropic, Atlassian, Azure, Docker Hub, npm, PyPI, Hugging Face, Vault, Grafana, DigitalOcean, SendGrid, Telegram; JWTs.

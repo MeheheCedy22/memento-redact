@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,6 +194,10 @@ func TestDefaultPresets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default rulesets must load: %v", err)
 	}
+	// a base64-encoded PEM block, as in Kubernetes secrets
+	pem64 := func(label string) string {
+		return base64.StdEncoding.EncodeToString([]byte("-----BEGIN " + label + "-----\nMIIfake\n-----END " + label + "-----\n"))
+	}
 	cases := []struct {
 		rule  string
 		input string
@@ -229,6 +234,22 @@ func TestDefaultPresets(t *testing.T) {
 		{"Auth headers", "curl -H \"Authorization: Bearer abc.def\" https://x\nCookie: sid=1; csrftoken=2\nPRIVATE-TOKEN: glpat-x\nHost: x", []string{"Bearer abc.def", "sid=1; csrftoken=2", "glpat-x"}},
 		{"Credentials in URLs and curl", "mysql://app:s3cret@db.example.com/app https://example.com/a:b curl -s -u admin:hunter2 https://jira", []string{"app:s3cret", "admin:hunter2"}},
 		{"Private keys", "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz\n-----END OPENSSH PRIVATE KEY----- -----BEGIN PGP PRIVATE KEY BLOCK-----\nx\n-----END PGP PRIVATE KEY BLOCK-----", []string{"-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz\n-----END OPENSSH PRIVATE KEY-----", "-----BEGIN PGP PRIVATE KEY BLOCK-----\nx\n-----END PGP PRIVATE KEY BLOCK-----"}},
+		{"Private keys", "-----BEGIN PGP SECRET KEY BLOCK-----\n\nlQOYfake\n-----END PGP SECRET KEY BLOCK-----\n" +
+			"---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----\nComment: \"rsa-key\"\nP2/56wfake\n---- END SSH2 ENCRYPTED PRIVATE KEY ----\n" +
+			`{"pem": "-----BEGIN EC PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nMHcCAQEEIfake"}` + "\n" +
+			"Public-Lines: 1\nAAAAC3NzaPublic\nPrivate-Lines: 2\nAAAAIFakePrivate\nLine2==\nPrivate-MAC: 0123abcd\n" +
+			"age: AGE-SECRET-KEY-1" + strings.Repeat("Q", 58) + "\n" +
+			"tls.crt: " + pem64("CERTIFICATE") + "\ntls.key: " + pem64("PRIVATE KEY") + "\nclient-key: " + pem64("OPENSSH PRIVATE KEY") + "\n" +
+			"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAfake\r\nQyNTUxOQ==\nnext step: done", []string{
+			"-----BEGIN PGP SECRET KEY BLOCK-----\n\nlQOYfake\n-----END PGP SECRET KEY BLOCK-----",
+			"---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----\nComment: \"rsa-key\"\nP2/56wfake\n---- END SSH2 ENCRYPTED PRIVATE KEY ----",
+			`-----BEGIN EC PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nMHcCAQEEIfake`,
+			"AAAAIFakePrivate\nLine2==",
+			"AGE-SECRET-KEY-1" + strings.Repeat("Q", 58),
+			pem64("PRIVATE KEY"),
+			pem64("OPENSSH PRIVATE KEY"),
+			"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAfake\r\nQyNTUxOQ==",
+		}},
 		{"Well-known token formats", strings.Join(tokens, " ") + " ghp_short notakey", tokens},
 		{"Webhook URLs", "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX https://discord.com/api/webhooks/123/abc-DEF https://contoso.webhook.office.com/webhookb2/abc@def/IncomingWebhook/x/y", []string{"services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX", "123/abc-DEF", "webhookb2/abc@def/IncomingWebhook/x/y"}},
 	}

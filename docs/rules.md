@@ -111,7 +111,7 @@ If a part contains `#`, the number replaces it (`[D#].[T#]` → `[D1].[T1]`). Ot
 | Organization | Hosts in your domain, the domain itself, your own list of names and codenames |
 | Network | Public IPv4 and IPv6 (private ranges kept), internal hostnames, cloud account IDs, MAC addresses (off by default) |
 | Personal data | Email, phone numbers, usernames, payment cards, IBAN, CZ/SK birth numbers |
-| Secrets | Key-value secrets, command-line passwords, PowerShell SecureString, auth headers, credentials in URLs and curl, private keys, well-known token formats, webhook URLs |
+| Secrets | Key-value secrets, command-line passwords, PowerShell SecureString, auth headers, credentials in URLs and curl, private keys (PEM, OpenSSH, SSH2, PGP, PuTTY, age; also cut off or base64-encoded), well-known token formats, webhook URLs |
 
 The secret patterns are adapted from the [gitleaks default config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) and the [detect-secrets keyword list](https://github.com/Yelp/detect-secrets/blob/master/detect_secrets/plugins/keyword.py).
 
