@@ -25,6 +25,9 @@ export type MapEntry = {
   ruleset: string
   rule: string
   count: number
+  // the rule's placeholder and the numbers put into it; sent back as known, they keep numbering going
+  placeholder: string
+  numbers?: number[]
 }
 
 export type PreviewResult = {
@@ -51,11 +54,12 @@ export const api = {
     call<Ruleset[]>('/v1/rulesets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sets) }),
   // checks a rules file (YAML or JSON) and returns its rulesets without saving them
   parse: (file: string) => call<Ruleset[]>('/v1/rulesets/parse', { method: 'POST', headers: { 'Content-Type': 'application/yaml' }, body: file }),
-  preview: (text: string, rulesets: Ruleset[], signal: AbortSignal) =>
+  // known is the conversation so far: its values keep their placeholders
+  preview: (text: string, rulesets: Ruleset[], known: MapEntry[], signal: AbortSignal) =>
     call<PreviewResult>('/v1/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, rulesets }),
+      body: JSON.stringify({ text, rulesets, known }),
       signal,
     }),
 }

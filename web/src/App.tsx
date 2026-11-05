@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, errorText, type PreviewResult, type Ruleset } from './api'
+import { api, errorText, type MapEntry, type PreviewResult, type Ruleset } from './api'
+import { remember } from './restore'
 import RulesEditor, { hitKey } from './RulesEditor'
 import { currentTheme, setTheme, type Theme } from './theme'
 import Workspace from './Workspace'
@@ -16,6 +17,8 @@ function App() {
   // Input text lives only in memory: it is exactly the data this tool must not leave lying around.
   const [text, setText] = useState('')
   const [answer, setAnswer] = useState('')
+  // The map of every text copied out so far: later texts keep these placeholders. Memory only, like the text.
+  const [conversation, setConversation] = useState<MapEntry[]>([])
   const [result, setResult] = useState<(PreviewResult & { input: string; rules: Ruleset[] }) | null>(null)
   const [previewError, setPreviewError] = useState('')
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -51,7 +54,7 @@ function App() {
     const controller = new AbortController()
     const timer = setTimeout(() => {
       api
-        .preview(text, draft, controller.signal)
+        .preview(text, draft, conversation, controller.signal)
         .then((res) => {
           setResult({ ...res, input: text, rules: draft })
           setPreviewError('')
@@ -64,7 +67,7 @@ function App() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [text, draft, saved])
+  }, [text, draft, saved, conversation])
 
   const hits = useMemo(() => {
     const counts = new Map<string, number>()
@@ -134,6 +137,9 @@ function App() {
       {page !== 'rules' ? (
         <Workspace
           mode={page}
+          conversation={conversation}
+          onCopied={() => result && setConversation((c) => remember(c, result.map))}
+          onNewConversation={() => setConversation([])}
           answer={answer}
           setAnswer={setAnswer}
           text={text}

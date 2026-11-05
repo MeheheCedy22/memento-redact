@@ -31,7 +31,8 @@ Unknown paths and wrong methods get `404` or `405`.
 The request has two forms:
 
 - **Any content type except `application/json`**: the body is the text, redacted with the saved rules.
-- **`application/json`**: `{"text": "...", "rulesets": [...]}`. The given rulesets are checked and used but not saved. This is how the UI previews unsaved edits. If `rulesets` is missing or `null`, the saved rules are used. An empty list `[]` means no rules, so nothing is redacted.
+- **`application/json`**: `{"text": "...", "rulesets": [...], "known": [...]}`. The given rulesets are checked and used but not saved. This is how the UI previews unsaved edits. If `rulesets` is missing or `null`, the saved rules are used. An empty list `[]` means no rules, so nothing is redacted.
+- `known` (optional) is the `map` of earlier texts in the same conversation. Their values keep their tokens, and new values are numbered after them. The UI sends the map of every text you copied; the server keeps nothing between requests.
 
 ```bash
 curl -X POST --data 'ip 8.8.8.8, mail jane@corp.com' localhost:8080/v1/preview
@@ -41,15 +42,16 @@ curl -X POST --data 'ip 8.8.8.8, mail jane@corp.com' localhost:8080/v1/preview
 {
   "redacted": "ip [IP_1], mail [EMAIL_1]",
   "map": [
-    {"token": "[IP_1]", "original": "8.8.8.8", "ruleset": "Network", "rule": "Public IPv4", "count": 1},
-    {"token": "[EMAIL_1]", "original": "jane@corp.com", "ruleset": "Personal data", "rule": "Email", "count": 1}
+    {"token": "[IP_1]", "original": "8.8.8.8", "ruleset": "Network", "rule": "Public IPv4", "count": 1, "placeholder": "[IP_#]", "numbers": [1]},
+    {"token": "[EMAIL_1]", "original": "jane@corp.com", "ruleset": "Personal data", "rule": "Email", "count": 1, "placeholder": "[EMAIL_#]", "numbers": [1]}
   ]
 }
 ```
 
 - `map` has one entry per distinct value, in order of first appearance. `count` says how often the value occurs.
 - `ruleset` and `rule` name the rule that matched first.
-- Two entries can share a token. This happens with fixed placeholders and with *Number each part*, where `acme.sk` and `ACME.SK` both become `[DOMAIN_1].[TLD_1]`.
+- `placeholder` is the rule's placeholder, and `numbers` the numbers put into it (one per part with *Number each part*, none for a fixed placeholder). They let `known` continue the numbering.
+- Two entries can share a token. This happens with fixed placeholders (no `#`), where every value gets the same text.
 - `400`: invalid JSON, or an invalid rule. The message names the ruleset and the rule, e.g. `ruleset "S", rule "R": invalid regex "(": …`.
 - If the client disconnects, the server stops redacting and sends nothing. This is how the UI's live preview drops runs it no longer needs.
 

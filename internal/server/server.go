@@ -86,16 +86,18 @@ func makePreviewHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 			return
 		}
 		text, sets := string(b), store.get()
+		var known []redactor.Entry
 		if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 			var req struct {
 				Text     string           `json:"text"`
 				Rulesets []*rules.Ruleset `json:"rulesets"`
+				Known    []redactor.Entry `json:"known"` // map of earlier texts in the same conversation
 			}
 			if err := json.Unmarshal(b, &req); err != nil {
 				http.Error(w, "invalid preview payload: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-			text = req.Text
+			text, known = req.Text, req.Known
 			if req.Rulesets != nil {
 				if err := rules.Compile(req.Rulesets); err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
@@ -104,7 +106,7 @@ func makePreviewHandler(cfg *config.Config, store *ruleStore) http.HandlerFunc {
 				sets = req.Rulesets
 			}
 		}
-		res, err := redactor.Redact(r.Context(), text, sets)
+		res, err := redactor.Redact(r.Context(), text, sets, known)
 		if err != nil {
 			return // the client went away
 		}

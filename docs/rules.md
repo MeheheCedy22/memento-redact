@@ -85,7 +85,7 @@ In this project:
 - Numbers are counted per placeholder text in order of appearance. Rules with the same placeholder share one count: *Hosts in our domain* and *Internal hostnames* both use `[HOST_#]`.
 - Values are compared ignoring case: `web01` and `WEB01` get the same number, and the map shows the spelling seen first.
 - Without `#`, every value gets the same fixed text.
-- Numbering starts again for every text you redact. `[HOST_1]` in two separate pastes can be two different hosts.
+- In the UI, numbering continues across the texts you copy out (a *conversation*): `web01` stays `[HOST_1]` in the next text, and new values continue after the highest number. **New conversation** starts from 1 again. Through the API, pass the earlier `map` as `known` ([api.md](api.md#post-v1preview)); without it, every text starts from 1.
 
 ### Numbering each part
 

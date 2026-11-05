@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AutoTextarea from './AutoTextarea'
 import type { MapEntry, PreviewResult, Ruleset } from './api'
 import { copyText } from './clipboard'
 import { NumberedText, NumberedTextarea, type Part } from './Numbered'
 import Restore from './Restore'
+import { remember } from './restore'
 import { debugReport, escapeRegExp, reasons, type Mark } from './debug'
 import { activeProfile, applySwitches, switchesOf } from './rulesets'
 import { saveProfiles, saveReasons, savedProfiles, savedReasons } from './storage'
@@ -51,6 +52,10 @@ function highlight(text: string, map: MapEntry[]): Part[] {
 type Props = {
   // the Redact page, or the Restore page (same layout, the text pair shows an LLM answer instead)
   mode: 'redact' | 'restore'
+  // the map of the texts copied so far, and how to add the current one or start over
+  conversation: MapEntry[]
+  onCopied: () => void
+  onNewConversation: () => void
   answer: string
   setAnswer: (answer: string) => void
   text: string
@@ -63,7 +68,7 @@ type Props = {
   hits: Map<string, number>
 }
 
-export default function Workspace({ mode, answer, setAnswer, text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
+export default function Workspace({ mode, conversation, onCopied, onNewConversation, answer, setAnswer, text, setText, result, upToDate, previewError, draft, setDraft, hits }: Props) {
   const [copyNote, setCopyNote] = useState('')
   const [debug, setDebug] = useState(false)
   const [reported, setReported] = useState(new Map<string, Omit<Mark, 'entry'>>())
@@ -74,6 +79,17 @@ export default function Workspace({ mode, answer, setAnswer, text, setText, resu
   const active = activeProfile(draft, profiles)
   const outputRef = useRef<HTMLDivElement>(null)
   const jumps = useRef(new Map<string, number>())
+
+  // Selecting redacted text and pressing Ctrl+C sends it out just like Copy. The browser sends the copy event
+  // to the focused element or the body, not to the box with the selection, so the document listens.
+  useEffect(() => {
+    const copied = () => {
+      const at = getSelection()?.anchorNode
+      if (mode === 'redact' && upToDate && at && outputRef.current?.contains(at)) onCopied()
+    }
+    document.addEventListener('copy', copied)
+    return () => document.removeEventListener('copy', copied)
+  })
 
   // Scrolls the text pair to the next occurrence of token in the redacted text and outlines it.
   function jumpTo(token: string) {
@@ -86,6 +102,9 @@ export default function Workspace({ mode, answer, setAnswer, text, setText, resu
     marks[i].scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
   const replacements = result?.map.reduce((sum, entry) => sum + entry.count, 0) ?? 0
+  // Restore and its map use every value of the conversation, plus the current text's
+  const known = remember(conversation, result?.map ?? [])
+  const shown = mode === 'restore' ? known : (result?.map ?? [])
 
   const marks: Mark[] = (result?.map ?? []).flatMap((entry) => {
     const marked = reported.get(entryKey(entry))
@@ -154,7 +173,7 @@ export default function Workspace({ mode, answer, setAnswer, text, setText, resu
       {/* one scroll area for both columns, so long texts stay side by side; its height changes only by dragging the corner */}
       <div className="pair">
         {mode === 'restore' ? (
-          <Restore answer={answer} setAnswer={setAnswer} map={result?.map ?? []} outputRef={outputRef} />
+          <Restore answer={answer} setAnswer={setAnswer} map={known} outputRef={outputRef} />
         ) : (
           <>
             <section>
@@ -182,7 +201,7 @@ export default function Workspace({ mode, answer, setAnswer, text, setText, resu
                 {copyNote && <span className="note">{copyNote}</span>}
                 <button
                   className="primary"
-                  onClick={() => result && copyText(result.redacted, setCopyNote)}
+                  onClick={async () => result && (await copyText(result.redacted, setCopyNote)) && onCopied()}
                   disabled={!upToDate || !result?.redacted}
                   title="Copy the redacted text. Disabled while it is out of date or a rule has an error."
                 >
@@ -242,13 +261,30 @@ export default function Workspace({ mode, answer, setAnswer, text, setText, resu
         <section>
           <div className="section-head">
             <h2>Map</h2>
+            {conversation.length > 0 && (
+              <span className="muted" title="Values of the texts you copied keep their placeholders in the next text, and Restore knows them.">
+                {conversation.length} in conversation
+              </span>
+            )}
+            <button onClick={onNewConversation} disabled={!conversation.length} title="Forget the copied texts' values: numbering starts from 1 again.">
+              New conversation
+            </button>
             {mode === 'redact' && (
               <button onClick={() => setDebug(!debug)} aria-pressed={debug} title="Mark wrong redactions and copy a report about them.">
                 Debug
               </button>
             )}
           </div>
-          {result?.map.length ? (
+          <details className="help">
+            <summary>What is a conversation?</summary>
+            <ul>
+              <li>Copying the redacted text (<b>Copy</b> or Ctrl+C) adds its values to the conversation.</li>
+              <li>In the next text you paste, the same values get the same placeholders, and new ones continue the numbering: after <code>[HOST_5]</code> comes <code>[HOST_6]</code>.</li>
+              <li><b>Restore</b> knows every value of the conversation, so the LLM's answer can mention any text you copied.</li>
+              <li><b>New conversation</b> starts from 1 again. The conversation is kept only in this tab; reloading ends it.</li>
+            </ul>
+          </details>
+          {shown.length ? (
             <div className="scroll">
               <table className="map">
                 <thead>
@@ -261,7 +297,7 @@ export default function Workspace({ mode, answer, setAnswer, text, setText, resu
                   </tr>
                 </thead>
                 <tbody>
-                  {result.map.map((entry) => (
+                  {shown.map((entry) => (
                     <tr key={entryKey(entry)}>
                       <td>
                         <button className="link mono" onClick={() => jumpTo(entry.token)} title="Show in the text. Click again for the next occurrence.">

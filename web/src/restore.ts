@@ -29,15 +29,24 @@ function values(map: MapEntry[]): Map<string, { token: string; values: Set<strin
   return out
 }
 
+// remember adds the entries of a copied text to the conversation. A value already in it (same placeholder,
+// any case) keeps its first entry, as the server does.
+export function remember(conversation: MapEntry[], map: MapEntry[]): MapEntry[] {
+  const key = (e: MapEntry) => e.placeholder + '\u0000' + e.original.toLowerCase()
+  const seen = new Set(conversation.map(key))
+  const added = map.filter((e) => !seen.has(key(e)))
+  return added.length ? [...conversation, ...added] : conversation
+}
+
 // restore replaces the placeholders of map in answer with the values they stand for. Matching ignores case and
-// Markdown-escaped brackets (\[HOST_1\]). A placeholder that stands for several values, or a [NAME_9]-like one
-// that is not in the map, is left as it is and reported.
+// Markdown-escaped brackets (\[HOST_1\]). A placeholder that stands for several values, or a numbered one like
+// [HOST_9] that is not in the map, is left as it is and reported. Other bracketed words ([array], [INFO]) are text.
 export function restore(answer: string, map: MapEntry[]): Piece[] {
   const known = values(map)
   const escaped = [...known.keys()]
     .sort((a, b) => b.length - a.length)
     .map((t) => escapeRegExp(t).replace(/\\\[/g, '\\\\?\\[').replace(/\\\]/g, '\\\\?\\]'))
-  const pattern = new RegExp([...escaped, '\\\\?\\[[A-Z][A-Z0-9_]*\\\\?\\]'].join('|'), 'gi')
+  const pattern = new RegExp([...escaped, '\\\\?\\[[A-Z][A-Z0-9_]*_\\d+\\\\?\\]'].join('|'), 'gi')
   const pieces: Piece[] = []
   let last = 0
   for (const match of answer.matchAll(pattern)) {

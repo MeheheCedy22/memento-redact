@@ -31,7 +31,7 @@ Then open `http://localhost:8080`. One process serves the UI and the API. It nee
 | Your rules | `RULES_PATH`: `/app/data/rulesets.yml` on the `memento-data` volume | Until you change them. The file is written atomically (temp file, then rename), with mode `0600`. |
 | Factory presets | `/app/config/default-rulesets.yml` inside the image | Replaced with every image upgrade |
 | Text you redact | Server memory, while the request runs; the open browser tab | Never written to disk or logs. Gone when you close or reload the tab. |
-| Answers you restore | The open browser tab only; restoring never contacts the server | Gone when you close or reload the tab. |
+| Answers you restore, and the conversation (the map of texts you copied) | The open browser tab only. The conversation goes to the server with each preview so numbering continues, and is not kept there. | Gone when you close or reload the tab, or click **New conversation**. |
 | Theme choice, profiles, your own debug reasons | Browser `localStorage` | Until you clear site data |
 
 The log has one line per request: method, path and duration. It never contains text or rules.

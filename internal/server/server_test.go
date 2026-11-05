@@ -102,6 +102,14 @@ func TestPreviewUsesUnsavedRulesetsFromJSON(t *testing.T) {
 	}
 }
 
+func TestPreviewContinuesNumberingFromKnownEntries(t *testing.T) {
+	h := newHandler(t, newTestConfig(t))
+	body := `{"text":"bob@example.com, alice@example.com","known":[{"token":"[EMAIL_7]","original":"alice@example.com","placeholder":"[EMAIL_#]","numbers":[7]}]}`
+	if got := redacted(t, do(h, http.MethodPost, "/v1/preview", "application/json", body)); got != "[EMAIL_8], [EMAIL_7]" {
+		t.Fatalf("known entries must keep their token and numbering must continue: %q", got)
+	}
+}
+
 func TestPreviewRejectsOversizedPayload(t *testing.T) {
 	h := newHandler(t, newTestConfig(t))
 	if rec := do(h, http.MethodPost, "/v1/preview", "text/plain", strings.Repeat("a", 2048)); rec.Code != http.StatusRequestEntityTooLarge {

@@ -8,12 +8,12 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
 - `cmd/cli`: the API client (`health`, `redact`, `preview`, `rules list|export|import|reset|enable|disable`).
 - `config`: `config.Load()` reads settings from environment variables only; `default-rulesets.yml` holds the factory presets.
 - `internal/rules`: the Ruleset/Rule model, validation (`Compile`), matching (`Find`), YAML load and atomic save, and `Sync`. `Sync` seeds the rules on first start and upgrades unedited presets through the `preset` fingerprint.
-- `internal/redactor`: `Redact` runs all enabled rules on the original text. The longest match wins on overlaps. It numbers tokens per placeholder, ignoring case (`partNumbering` for `per_part`), and builds the map. It stops with an error when the request context ends.
+- `internal/redactor`: `Redact` runs all enabled rules on the original text. The longest match wins on overlaps. It numbers tokens per placeholder, ignoring case (`partNumbering` for `per_part`), and builds the map. `known` entries (an earlier map) keep their tokens and numbering continues after them; each entry carries its `placeholder` and `numbers` for that. It stops with an error when the request context ends.
 - `internal/server`: the handlers (including `POST /v1/rulesets/parse`, which checks a file without saving), the body size limit, `allowHosts` (blocks DNS rebinding) and `http.CrossOriginProtection` (blocks CSRF).
 - `web/`: Vite, React and TypeScript, with no other runtime dependencies.
   - `App.tsx`: draft and saved rules, the live preview, the header.
   - `Workspace.tsx`: the Redact page, and the Restore page (same layout; the text pair is `Restore.tsx`).
-  - `restore.ts`: puts real values back into an LLM answer, using the map of the current redaction.
+  - `restore.ts`: puts real values back into an LLM answer, and `remember` adds a copied text's map to the conversation (kept in `App.tsx`, memory only, sent as `known` with each preview).
   - `Numbered.tsx`: line numbers for the text pair and the Patterns fields (an invisible copy of the textarea text carries the numbers, so wrapped lines keep theirs).
   - `clipboard.ts`: copying with a visible note on failure.
   - `RulesEditor.tsx`: the Rules page.

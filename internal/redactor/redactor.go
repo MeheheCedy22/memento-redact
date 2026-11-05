@@ -16,6 +16,10 @@ type Entry struct {
 	Ruleset  string `json:"ruleset"`
 	Rule     string `json:"rule"`
 	Count    int    `json:"count"`
+	// Placeholder is the rule's placeholder the token was made from; Numbers are the numbers put into it,
+	// one per part with per_part. Passing entries back as known continues the numbering from them.
+	Placeholder string `json:"placeholder"`
+	Numbers     []int  `json:"numbers,omitempty"`
 }
 
 // Result is the output of a redaction operation.
@@ -36,8 +40,10 @@ type span struct {
 // All rules run against the original text, so no rule ever matches another rule's token.
 // Overlapping matches: the longest wins, ties go to the earlier rule.
 // Tokens are numbered per placeholder in order of appearance; values equal ignoring case share a token.
+// known holds the map entries of earlier texts in the same conversation: their values keep their tokens,
+// and new values are numbered after them.
 // It stops with ctx's error when ctx ends, so an abandoned preview does not keep running.
-func Redact(ctx context.Context, text string, sets []*rules.Ruleset) (Result, error) {
+func Redact(ctx context.Context, text string, sets []*rules.Ruleset, known []Entry) (Result, error) {
 	var spans []span
 	for _, set := range sets {
 		if !set.Enabled {
@@ -80,6 +86,18 @@ func Redact(ctx context.Context, text string, sets []*rules.Ruleset) (Result, er
 	index := map[[2]string]int{}
 	counters := map[string]int{}
 	parts := partNumbering{next: map[string]int{}, of: map[[2]string]int{}}
+	earlier := map[[2]string]Entry{}
+	for _, e := range known {
+		if e.Token == "" || e.Token == e.Original {
+			continue // never let a known entry put a value back into the text
+		}
+		earlier[[2]string{e.Placeholder, strings.ToLower(e.Original)}] = e
+		if len(e.Numbers) > 1 {
+			parts.remember(e.Placeholder, e.Original, e.Numbers)
+		} else if len(e.Numbers) == 1 {
+			counters[e.Placeholder] = max(counters[e.Placeholder], e.Numbers[0])
+		}
+	}
 	var b strings.Builder
 	last := 0
 	for _, s := range kept {
@@ -87,17 +105,24 @@ func Redact(ctx context.Context, text string, sets []*rules.Ruleset) (Result, er
 		key := [2]string{s.ph, strings.ToLower(original)}
 		i, ok := index[key]
 		if !ok {
-			token := ""
-			if s.perPart {
-				token = parts.token(s.ph, original)
+			e, seen := earlier[key]
+			if !seen {
+				e = Entry{Placeholder: s.ph}
+				if s.perPart {
+					e.Token, e.Numbers = parts.token(s.ph, original)
+				}
+				if e.Token == "" {
+					counters[s.ph]++
+					e.Token = strings.ReplaceAll(s.ph, "#", strconv.Itoa(counters[s.ph]))
+					if strings.Contains(s.ph, "#") {
+						e.Numbers = []int{counters[s.ph]}
+					}
+				}
 			}
-			if token == "" {
-				counters[s.ph]++
-				token = strings.ReplaceAll(s.ph, "#", strconv.Itoa(counters[s.ph]))
-			}
+			e.Original, e.Ruleset, e.Rule, e.Count = original, s.set, s.rule, 0
 			i = len(res.Map)
 			index[key] = i
-			res.Map = append(res.Map, Entry{Token: token, Original: original, Ruleset: s.set, Rule: s.rule})
+			res.Map = append(res.Map, e)
 		}
 		res.Map[i].Count++
 		b.WriteString(text[last:s.start])
@@ -115,18 +140,28 @@ type partNumbering struct {
 	of   map[[2]string]int // (placeholder part, value part) -> number
 }
 
-// token fills each dot-separated part of ph with the number of the matching part of original:
-// [DOMAIN].[TLD] gives acme.sk -> [DOMAIN_1].[TLD_1], acme.com -> [DOMAIN_1].[TLD_2].
-// Extra leading labels belong to the first part (corp.acme.sk -> DOMAIN "corp.acme").
-// It returns "" when original has fewer parts than ph.
-func (p *partNumbering) token(ph, original string) string {
-	tmpl := strings.Split(ph, ".")
-	vals := strings.Split(original, ".")
+// split cuts ph and original at the dots into matching parts; extra leading labels of original belong
+// to the first part (corp.acme.sk for [DOMAIN].[TLD] -> "corp.acme", "sk"). It returns nil when ph has
+// no dots or original has fewer parts than ph.
+func split(ph, original string) (tmpl, vals []string) {
+	tmpl = strings.Split(ph, ".")
+	vals = strings.Split(original, ".")
 	if len(tmpl) < 2 || len(vals) < len(tmpl) {
-		return ""
+		return nil, nil
 	}
 	extra := len(vals) - len(tmpl)
-	vals = append([]string{strings.Join(vals[:extra+1], ".")}, vals[extra+1:]...)
+	return tmpl, append([]string{strings.Join(vals[:extra+1], ".")}, vals[extra+1:]...)
+}
+
+// token fills each dot-separated part of ph with the number of the matching part of original, and returns
+// those numbers: [DOMAIN].[TLD] gives acme.sk -> [DOMAIN_1].[TLD_1], acme.com -> [DOMAIN_1].[TLD_2].
+// It returns "" when split does.
+func (p *partNumbering) token(ph, original string) (string, []int) {
+	tmpl, vals := split(ph, original)
+	if tmpl == nil {
+		return "", nil
+	}
+	nums := make([]int, len(tmpl))
 	for i, part := range tmpl {
 		key := [2]string{part, strings.ToLower(vals[i])}
 		n, ok := p.of[key]
@@ -135,6 +170,7 @@ func (p *partNumbering) token(ph, original string) string {
 			n = p.next[part]
 			p.of[key] = n
 		}
+		nums[i] = n
 		num := strconv.Itoa(n)
 		switch {
 		case strings.Contains(part, "#"):
@@ -145,7 +181,19 @@ func (p *partNumbering) token(ph, original string) string {
 			tmpl[i] = part + "_" + num
 		}
 	}
-	return strings.Join(tmpl, ".")
+	return strings.Join(tmpl, "."), nums
+}
+
+// remember takes the part numbers of a token from an earlier text, so they are reused and continued.
+func (p *partNumbering) remember(ph, original string, nums []int) {
+	tmpl, vals := split(ph, original)
+	if len(tmpl) != len(nums) {
+		return
+	}
+	for i, part := range tmpl {
+		p.of[[2]string{part, strings.ToLower(vals[i])}] = nums[i]
+		p.next[part] = max(p.next[part], nums[i])
+	}
 }
 
 func free(taken []bool, start, end int) bool {

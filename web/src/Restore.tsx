@@ -12,7 +12,7 @@ type Props = {
 }
 
 // The Restore page's text pair: the LLM's answer, and the same answer with the real values put back from the
-// map of the current redaction. It runs in the browser only; neither text is sent to the server.
+// conversation's map (every text copied out, plus the current one). It runs in the browser only; neither text is sent to the server.
 export default function Restore({ answer, setAnswer, map, outputRef }: Props) {
   const [copyNote, setCopyNote] = useState('')
   const pieces = restore(answer, map)
@@ -27,7 +27,7 @@ export default function Restore({ answer, setAnswer, map, outputRef }: Props) {
       case 'ambiguous':
         return { text: p.text, wrap: (t, key) => <mark key={key} className="unresolved" title={`Stands for several values: ${p.values.join(', ')}`}>{t}</mark> }
       case 'unknown':
-        return { text: p.text, wrap: (t, key) => <mark key={key} className="unresolved" title="Not in the map of the current redaction">{t}</mark> }
+        return { text: p.text, wrap: (t, key) => <mark key={key} className="unresolved" title="Not in the map of this conversation">{t}</mark> }
     }
   })
   const unresolved = [...new Set(pieces.filter((p) => p.kind === 'ambiguous' || p.kind === 'unknown').map((p) => p.text))]
@@ -43,7 +43,7 @@ export default function Restore({ answer, setAnswer, map, outputRef }: Props) {
           className="mono"
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
-          placeholder="Paste the answer here. Its placeholders are replaced with the real values of the current redaction."
+          placeholder="Paste the answer here. Its placeholders get the real values of the conversation back."
           spellCheck={false}
           aria-label="Answer from the LLM"
         />
@@ -67,7 +67,7 @@ export default function Restore({ answer, setAnswer, map, outputRef }: Props) {
           {answer ? (
             <NumberedText parts={parts} />
           ) : (
-            <span className="muted">{map.length ? 'The restored answer appears here.' : 'Redact a text first: the answer is restored with the map of that redaction.'}</span>
+            <span className="muted">{map.length ? 'The restored answer appears here.' : 'Redact a text first: the answer is restored with the map of the texts you redacted.'}</span>
           )}
         </div>
       </section>

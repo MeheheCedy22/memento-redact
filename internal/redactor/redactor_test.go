@@ -3,6 +3,7 @@ package redactor
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/MeheheCedy22/memento-redact/internal/rules"
@@ -18,7 +19,7 @@ func sets(t *testing.T, sets ...*rules.Ruleset) []*rules.Ruleset {
 
 func redact(t *testing.T, text string, sets []*rules.Ruleset) Result {
 	t.Helper()
-	res, err := Redact(context.Background(), text, sets)
+	res, err := Redact(context.Background(), text, sets, nil)
 	if err != nil {
 		t.Fatalf("redact: %v", err)
 	}
@@ -34,7 +35,7 @@ func TestRedactNumbersDistinctValuesAndReusesTokens(t *testing.T) {
 	if want := "mail [EMAIL_1], [EMAIL_2], again [EMAIL_1]"; res.Redacted != want {
 		t.Fatalf("got %q, want %q", res.Redacted, want)
 	}
-	if len(res.Map) != 2 || res.Map[0] != (Entry{Token: "[EMAIL_1]", Original: "a@x.com", Ruleset: "s", Rule: "email", Count: 2}) {
+	if want := (Entry{Token: "[EMAIL_1]", Original: "a@x.com", Ruleset: "s", Rule: "email", Count: 2, Placeholder: "[EMAIL_#]", Numbers: []int{1}}); len(res.Map) != 2 || !reflect.DeepEqual(res.Map[0], want) {
 		t.Fatalf("unexpected map: %+v", res.Map)
 	}
 }
@@ -116,7 +117,34 @@ func TestRedactStopsWhenContextEnds(t *testing.T) {
 	rs := sets(t, &rules.Ruleset{Name: "s", Enabled: true, Rules: []*rules.Rule{{Name: "w", Enabled: true, Type: "words", Patterns: []string{"x"}}}})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Redact(ctx, "x", rs); err == nil {
+	if _, err := Redact(ctx, "x", rs, nil); err == nil {
 		t.Fatal("a cancelled redaction must return an error, never a partly redacted text")
+	}
+}
+
+func TestRedactKnownEntriesKeepTheirTokensAndNumberingContinues(t *testing.T) {
+	hosts := &rules.Rule{Name: "hosts", Enabled: true, Type: "words", Patterns: []string{"web01", "db01", "app01"}, Placeholder: "[HOST_#]"}
+	domains := &rules.Rule{Name: "domains", Enabled: true, Type: "words", Patterns: []string{"acme.sk", "acme.com", "contoso.sk"}, Placeholder: "[DOMAIN].[TLD]", PerPart: true}
+	rs := sets(t, &rules.Ruleset{Name: "org", Enabled: true, Rules: []*rules.Rule{hosts, domains}})
+
+	first := redact(t, "web01 and db01 on acme.sk", rs)
+	if first.Redacted != "[HOST_1] and [HOST_2] on [DOMAIN_1].[TLD_1]" {
+		t.Fatalf("first text: %q", first.Redacted)
+	}
+	second, err := Redact(context.Background(), "DB01, app01, contoso.sk, acme.com", rs, first.Map)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "[HOST_2], [HOST_3], [DOMAIN_2].[TLD_1], [DOMAIN_1].[TLD_2]"; second.Redacted != want {
+		t.Fatalf("second text: got %q, want %q", second.Redacted, want)
+	}
+	if len(second.Map) != 4 || second.Map[0].Original != "DB01" || second.Map[0].Count != 1 {
+		t.Fatalf("the map lists this text's values, as written here: %+v", second.Map)
+	}
+
+	// an entry that would put the value itself into the text is ignored
+	bad := []Entry{{Token: "web01", Original: "web01", Placeholder: "[HOST_#]", Numbers: []int{1}}}
+	if got, _ := Redact(context.Background(), "web01", rs, bad); got.Redacted != "[HOST_1]" {
+		t.Fatalf("a known entry must not unredact: %q", got.Redacted)
 	}
 }
