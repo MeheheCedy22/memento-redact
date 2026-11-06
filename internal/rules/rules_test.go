@@ -234,6 +234,7 @@ func TestDefaultPresets(t *testing.T) {
 		{"Key-value secrets", `DB_PASS=${DB_PASS:-hunter2} PASS=$(echo 'p@ss' | base64 -d) TOKEN=$(printf -n s3cr3t) PASS=$(echo $OTHER)`, []string{"${DB_PASS:-hunter2}", "'p@ss'", "s3cr3t"}},
 		{"Key-value secrets", "password: `hunter2` api_key = “abc123” token: «xyz789» secret := `raw` PASS=`cat f` $db_password = Read-Host -AsSecureString $db_pass = 'p w' $api_token = $null", []string{"hunter2", "abc123", "xyz789", "raw", "p w"}},
 		{"Key-value secrets", `<entry key="dbPassword" value="hunter2"/> <entry key="apiToken">tok123</entry> <password>maven-pw</password> <input type="password"><label>`, []string{"hunter2", "tok123", "maven-pw"}},
+		{"Key-value secrets", "at com.example.auth.TokenClient.fetch(TokenClient.java:87) ~[auth-client-1.0.jar:?]\nat com.example.PasswordCheck.run(PasswordCheck.kt:12)\nat refresh (/app/src/token.service.js:42:17)\n\t/src/app/secret_store.go:123 +0x1d\nin C:\\src\\TokenService.cs:line 42\napi_token: abc123 password:1234 token.ttl:3600", []string{"abc123", "1234", "3600"}},
 		{"Command-line passwords", `--password "$PASS" -Password $env:PASS --token=${TOKEN} --api-key $(vault read -field=key x)`, nil},
 		{"Auth headers", `curl -H "Authorization: Bearer $JIRA_TOKEN" -H "X-Api-Key: ${KEY}"`, nil},
 		{"Credentials in URLs and curl", `https://$USER:$PASS@host curl -u "$JIRA_USER:$JIRA_PASS" https://x`, nil},
