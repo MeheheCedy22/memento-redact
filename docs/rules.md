@@ -21,6 +21,7 @@ You can edit rules on the **Rules** page (one tab per ruleset), export them to Y
       keep: ''                    # optional regex; matching values are not redacted
       placeholder: '[HOST_#]'     # '#' -> 1, 2, 3 per distinct value
       per_part: false             # see "Numbering each part"
+      random: false               # true: redact only values that look generated
       samples:                    # optional lines to try the rule on; redaction ignores them
         - 'ssh web01.domain.tld'
 ```
@@ -37,6 +38,7 @@ You can edit rules on the **Rules** page (one tab per ruleset), export them to Y
 | `keep` | | A regex. Values that match it are left as they are. |
 | `placeholder` | | Replacement text. `#` becomes a number. Default: `[REDACTED_#]`. |
 | `per_part` | | Number each dot-separated part of the placeholder separately. |
+| `random` | | Redact a match only if it looks generated (see [Random-looking values](#random-looking-values)). *Only random-looking* on the Rules page. |
 | `samples` | | Lines to try the rule on. The Rules page shows each one redacted by this rule alone as you edit, and marks lines it leaves as they were with *not redacted*. Redaction ignores them. They are not an edit: a preset with samples still updates, and keeps them. |
 
 YAML is a superset of JSON, so imports also accept JSON. In single-quoted YAML strings a backslash is literal and a quote is written as `''`.
@@ -118,7 +120,7 @@ Backticks depend on the separator. In shell, `` PASS=`cat file` `` (no spaces ar
 | Organization | Hosts in your domain, the domain itself, your own list of names and codenames |
 | Network | Public IPv4 and IPv6 (private ranges kept), internal hostnames, cloud account IDs, git repository paths (`git@host:path`, clone URLs ending in `.git`), MAC addresses (off by default) |
 | Personal data | Email, phone numbers, usernames, payment cards, IBAN, CZ/SK birth numbers |
-| Secrets | Key-value secrets, command-line passwords, PowerShell SecureString, auth headers, credentials in URLs and curl, private keys (PEM, OpenSSH, SSH2, PGP, PuTTY, age; also cut off or base64-encoded), well-known token formats, webhook URLs |
+| Secrets | Key-value secrets, command-line passwords, PowerShell SecureString, auth headers, credentials in URLs and curl, private keys (PEM, OpenSSH, SSH2, PGP, PuTTY, age; also cut off or base64-encoded), well-known token formats, webhook URLs, random-looking values near key words (off by default) |
 
 The secret patterns are adapted from the [gitleaks default config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) and the [detect-secrets keyword list](https://github.com/Yelp/detect-secrets/blob/master/detect_secrets/plugins/keyword.py).
 
@@ -133,7 +135,7 @@ On every start, the server compares your rules with the factory presets (`rules.
 - Your own rulesets, and rulesets without a `preset` stamp, are never touched.
 - New presets and presets you deleted are not added automatically. Add them under **Add preset…**.
 
-Switching rules on or off does not count as an edit. Changing a name, description, pattern, keep regex or placeholder does.
+Switching rules on or off does not count as an edit. Changing a name, description, pattern, keep regex, placeholder or option does.
 
 ## Writing your own rules
 
@@ -145,6 +147,18 @@ Switching rules on or off does not count as an edit. Changing a name, descriptio
 | Short VM names like `srv-db01` | regex | `(?i)\bsrv-[a-z]+\d+\b` | `[HOST_#]` |
 
 To skip some values, add a keep regex, for example `^(?:test|demo)$`.
+
+### Random-looking values
+
+For tokens with no known format, a rule can redact only values that look generated: tick **Only random-looking** (`random: true`). A match counts as random-looking when it:
+
+- has at least 16 characters, with letters and digits;
+- switches between letters, digits and upper/lower case in at least 30% of neighbouring characters (separators like `-` `_` `.` skipped). `Xk9vQ2mLp7RtZ4wB` and hex or base64 strings do; `AuthenticationService2` and `my-service-name-2` do not;
+- has enough different characters (Shannon entropy of at least 3 bits per character), so `ab12ab12ab12ab12` does not.
+
+A generated value of only letters, or only digits, is not recognized.
+
+The preset *Secrets › Random-looking values near key words* uses it. It is **off by default**; switch it on on the Redact page or the Rules page. It looks up to 40 characters after `key`, `secret`, `token`, `password`, `pwd`, `passphrase`, `credential` or `bearer` on the same line, also inside longer words (`keyboard`, `api_key`), so `staging key is Xk9vQ2mLp7RtZ4wB` becomes `staging key is [SECRET_1]`. It takes the first 16+ character value after the key word: if that one is not random-looking, a random value later on the same line is missed.
 
 ### Warnings
 

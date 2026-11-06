@@ -41,6 +41,8 @@ type Rule struct {
 	// PerPart numbers each dot-separated part of the placeholder by its own value:
 	// [DOMAIN].[TLD] gives acme.sk -> [DOMAIN_1].[TLD_1], acme.com -> [DOMAIN_1].[TLD_2].
 	PerPart bool `yaml:"per_part,omitempty" json:"per_part,omitempty"`
+	// Random redacts a match only if it looks like a generated secret (see looksRandom), for tokens with no known format.
+	Random bool `yaml:"random,omitempty" json:"random,omitempty"`
 	// Samples are lines the Rules page redacts with this rule alone while you edit it; redaction ignores them.
 	Samples []string `yaml:"samples,omitempty" json:"samples,omitempty"`
 
@@ -163,7 +165,7 @@ func (r *Rule) Find(text string) [][2]int {
 				break
 			}
 		}
-		if start == end || r.keep != nil && r.keep.MatchString(text[start:end]) {
+		if start == end || r.keep != nil && r.keep.MatchString(text[start:end]) || r.Random && !looksRandom(text[start:end]) {
 			continue
 		}
 		out = append(out, [2]int{start, end})

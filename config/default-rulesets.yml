@@ -251,3 +251,11 @@
         - '(?i)discord(?:app)?\.com/api/webhooks/(\d+/[\w-]+)'
         - '(?i)\.webhook\.office\.com/(webhookb2/[^\s"''<>]+)'
       placeholder: '[WEBHOOK_#]'
+    - name: Random-looking values near key words
+      description: 'Off by default. A value that looks generated (16+ characters, letters and digits mixed, no words) up to 40 characters after key, secret, token, password, pwd, passphrase, credential or bearer on the same line. For tokens with no known format.'
+      enabled: false
+      type: regex
+      patterns:
+        - '(?i)(?:key|secret|token|passw(?:or)?d|pwd|passphrase|credential|bearer)[^\n]{0,40}?([A-Za-z0-9+/_~.-]{16,}={0,2})'
+      random: true
+      placeholder: '[SECRET_#]'

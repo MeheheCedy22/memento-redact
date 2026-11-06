@@ -259,6 +259,7 @@ func TestDefaultPresets(t *testing.T) {
 			"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAfake\r\nQyNTUxOQ==",
 		}},
 		{"Well-known token formats", strings.Join(tokens, " ") + " ghp_short notakey", tokens},
+		{"Random-looking values near key words", "staging key is Xk9vQ2mLp7RtZ4wB; token AuthenticationService2, secret = a3f8c9e1b2d4f6a8c0e2b4d6f8a1c3e5\nkeyboard layout 7Fh2kL9pQ4xZ8mWt3\ntoken for build-2024-01-15-release", []string{"Xk9vQ2mLp7RtZ4wB", "a3f8c9e1b2d4f6a8c0e2b4d6f8a1c3e5", "7Fh2kL9pQ4xZ8mWt3"}},
 		{"Webhook URLs", "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX https://discord.com/api/webhooks/123/abc-DEF https://contoso.webhook.office.com/webhookb2/abc@def/IncomingWebhook/x/y", []string{"services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX", "123/abc-DEF", "webhookb2/abc@def/IncomingWebhook/x/y"}},
 	}
 	tested := map[string]bool{}

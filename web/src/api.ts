@@ -8,6 +8,8 @@ export type Rule = {
   placeholder: string
   // number each dot-separated placeholder part by its own value
   per_part?: boolean
+  // redact a match only if it looks generated: 16+ characters, letters and digits mixed, no words
+  random?: boolean
   // lines the Rules page redacts with this rule alone while editing; redaction ignores them
   samples?: string[]
 }

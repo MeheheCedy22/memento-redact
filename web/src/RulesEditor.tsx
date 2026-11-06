@@ -151,7 +151,7 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, wa
           <li><b>regex</b>: one regular expression per line, see the cheat sheet below. With a group <code>( )</code> only the group is replaced: <code>password=(\S+)</code> → <code>password=[SECRET_1]</code>.</li>
           <li><b>Placeholder</b>: <code>#</code> becomes a number per distinct value; repeats keep their number. Without <code>#</code> every value gets the same text.</li>
           <li><b>Number each part</b> (placeholders with dots): each part is numbered by its own value, so <code>acme.sk</code> → <code>[DOMAIN_1].[TLD_1]</code> and <code>acme.com</code> → <code>[DOMAIN_1].[TLD_2]</code>.</li>
-          <li><b>Keep</b>: matched values that also match this regex stay as they are.</li>
+          <li><b>Keep</b>: matched values that also match this regex stay as they are. <b>Only random-looking</b>: a match is redacted only if it looks generated (16+ characters, letters and digits mixed, no words), for tokens with no known format. <i>Secrets › Random-looking values near key words</i> uses it; it is off by default.</li>
           <li><b>Sample lines</b> (under the patterns): lines to try the rule on. Each is shown redacted by that rule alone as you edit; <i>not redacted</i> marks a line it left as it was. They are saved with the rule and do not count as an edit of a preset.</li>
           <li>When matches overlap, the longest wins.</li>
           <li><span className="warn">Warnings</span> point at rules that probably redact too much or too little: a greedy <code>.*</code>, a missing <code>\b</code>, or a rule that redacts ordinary text. They do not stop anything.</li>
@@ -342,7 +342,13 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, wa
                       </span>
                     )}
                   </div>
-                  <AutoTextarea className="mono" rows={1} value={rule.keep ?? ''} placeholder="regex" onChange={(e) => change({ keep: oneLine(e.target.value) })} aria-label="Keep regex" />
+                  <div className="stack">
+                    <AutoTextarea className="mono" rows={1} value={rule.keep ?? ''} placeholder="regex" onChange={(e) => change({ keep: oneLine(e.target.value) })} aria-label="Keep regex" />
+                    <label className="option" title="Redact a match only if it looks generated: 16+ characters, letters and digits mixed, no words. For keys and tokens with no known format.">
+                      <input type="checkbox" checked={rule.random ?? false} onChange={(e) => change({ random: e.target.checked || undefined })} />
+                      Only random-looking
+                    </label>
+                  </div>
                   <button className="danger" onClick={() => setDraft(updateSet(draft, i, { rules: set.rules.filter((_, j) => j !== k) }))} aria-label={`Delete rule ${rule.name}`} title="Delete rule">
                     ✕
                   </button>
