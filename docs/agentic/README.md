@@ -19,7 +19,7 @@ These are operating notes for AI-assisted maintenance of `memento-redact`. Never
   - `RulesEditor.tsx`: the Rules page.
   - `debug.ts`: builds the debug report from the marked map entries and missed texts.
   - `rulesets.ts`: merging an import into the rules, and profiles (saved on/off switches, matched by name).
-  - `storage.ts`: the browser-only settings (saved debug reasons, profiles) in `localStorage`.
+  - `storage.ts`: the browser-only settings (saved debug reasons, profiles, text box height) in `localStorage`.
   - `*.test.ts`: tests for the pure modules above (`npm test`, Node's built-in runner, excluded from `tsc`). Tested modules import each other with the `.ts` extension, because Node needs it (`allowImportingTsExtensions` in `tsconfig.json`).
   - `AutoTextarea.tsx`: form fields that grow with their content.
   - `theme.ts` and the CSS variables: light and dark mode.

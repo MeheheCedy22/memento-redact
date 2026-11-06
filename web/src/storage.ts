@@ -1,6 +1,6 @@
 import type { Profile } from './rulesets'
 
-// Per-browser settings (saved reasons, profiles). Storage can be missing or full, e.g. in private mode:
+// Per-browser settings (saved reasons, profiles, text box height). Storage can be missing or full, e.g. in private mode:
 // then load returns fallback and store keeps nothing, so the value lasts until reload.
 function load(key: string, fallback: unknown): unknown {
   try {
@@ -33,3 +33,11 @@ export function savedProfiles(): Profile[] {
 }
 
 export const saveProfiles = (list: Profile[]) => store('profiles', list)
+
+// The height in pixels of the text boxes on the Redact and Restore pages, as last dragged.
+export function savedPairHeight(): number | null {
+  const height = load('pairHeight', null)
+  return typeof height === 'number' && height > 0 ? height : null
+}
+
+export const savePairHeight = (height: number) => store('pairHeight', height)

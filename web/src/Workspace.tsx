@@ -7,7 +7,7 @@ import Restore from './Restore'
 import { remember } from './restore'
 import { debugReport, reasons, type Mark } from './debug'
 import { activeProfile, applySwitches, switchesOf } from './rulesets'
-import { saveProfiles, saveReasons, savedProfiles, savedReasons } from './storage'
+import { savePairHeight, saveProfiles, saveReasons, savedPairHeight, savedProfiles, savedReasons } from './storage'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
 
 const example = `PS> Get-VM | Select Name, PowerState, @{N='IP';E={$_.Guest.IPAddress -join ', '}}
@@ -58,7 +58,21 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
   const [profiles, setProfiles] = useState(savedProfiles)
   const active = activeProfile(draft, profiles)
   const outputRef = useRef<HTMLDivElement>(null)
+  const pairRef = useRef<HTMLDivElement>(null)
   const jumps = useRef(new Map<string, number>())
+
+  // The text boxes keep the height you dragged them to, also after a reload.
+  useEffect(() => {
+    const pair = pairRef.current
+    if (!pair) return
+    const saved = savedPairHeight()
+    if (saved) pair.style.height = `${saved}px`
+    const observer = new ResizeObserver(() => {
+      if (pair.offsetHeight > 0) savePairHeight(pair.offsetHeight)
+    })
+    observer.observe(pair)
+    return () => observer.disconnect()
+  }, [])
 
   // Selecting redacted text and pressing Ctrl+C sends it out just like Copy. The browser sends the copy event
   // to the focused element or the body, not to the box with the selection, so the document listens.
@@ -153,7 +167,7 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
   return (
     <main className="workspace">
       {/* one scroll area for both columns, so long texts stay side by side; its height changes only by dragging the corner */}
-      <div className="pair">
+      <div className="pair" ref={pairRef}>
         {mode === 'restore' ? (
           <Restore answer={answer} setAnswer={setAnswer} map={known} outputRef={outputRef} />
         ) : (
