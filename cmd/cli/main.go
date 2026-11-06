@@ -70,6 +70,9 @@ func runRedact(cmd string, args []string) {
 	if *convFile != "" {
 		writeConversation(*convFile, remember(known, res.Map))
 	}
+	for _, l := range res.Leaks {
+		fmt.Fprintf(os.Stderr, "warning: %q is still in the text %dx; it is redacted elsewhere by %s / %s\n", l.Value, l.Count, l.Ruleset, l.Rule)
+	}
 	if cmd == "preview" {
 		printJSON(data)
 		return

@@ -82,6 +82,8 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
     marks[i].scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
   const replacements = result?.map.reduce((sum, entry) => sum + entry.count, 0) ?? 0
+  // values redacted elsewhere but still in the text, as one line: "hunter2", "acme" 2×
+  const leaks = result?.leaks?.map((l) => `"${l.value}"${l.count > 1 ? ` ${l.count}×` : ''}`).join(', ')
   // Restore and its map use every value of the conversation, plus the current text's
   const known = remember(conversation, result?.map ?? [])
   const shown = mode === 'restore' ? known : (result?.map ?? [])
@@ -181,16 +183,21 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
                 {copyNote && <span className="note">{copyNote}</span>}
                 <button
                   className="primary"
-                  onClick={async () => result && (await copyText(result.redacted, setCopyNote)) && onCopied()}
+                  onClick={async () => {
+                    if (!result) return
+                    if (leaks && !confirm(`Still in the redacted text: ${leaks}.\n\nCopy anyway?`)) return
+                    if (await copyText(result.redacted, setCopyNote)) onCopied()
+                  }}
                   disabled={!upToDate || !result?.redacted}
-                  title="Copy the redacted text. Disabled while it is out of date or a rule has an error."
+                  title="Copy the redacted text. Disabled while it is out of date or a rule has an error. Asks first if a redacted value is still in the text."
                 >
                   Copy
                 </button>
               </div>
               {previewError && <p className="error" role="alert">Not redacted: {previewError}</p>}
+              {!previewError && leaks && <p className="error" role="alert">Not redacted everywhere: {leaks}. Outlined below.</p>}
               <div ref={outputRef} className={`output mono ${upToDate ? '' : 'stale'}`} aria-label="Redacted text" aria-live="polite">
-                {result?.redacted ? <NumberedText parts={highlight(result.redacted, result.map)} /> : <span className="muted">The redacted text appears here.</span>}
+                {result?.redacted ? <NumberedText parts={highlight(result.redacted, result.map, result.leaks)} /> : <span className="muted">The redacted text appears here.</span>}
               </div>
             </section>
           </>

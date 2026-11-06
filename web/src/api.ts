@@ -35,10 +35,14 @@ export type MapEntry = {
 // a rule that works but probably redacts too much or too little
 export type Warning = { ruleset: string; rule: string; message: string }
 
+// a value that is redacted somewhere but still appears in the redacted text as it is
+export type Leak = { value: string; ruleset: string; rule: string; count: number }
+
 export type PreviewResult = {
   redacted: string
   map: MapEntry[]
   warnings?: Warning[]
+  leaks?: Leak[]
 }
 
 // Same origin: the Go server serves the UI; `npm run dev` proxies these paths (vite.config.ts).

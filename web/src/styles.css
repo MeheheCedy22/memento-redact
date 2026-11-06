@@ -303,6 +303,11 @@ mark.unresolved {
   outline: 1px dashed var(--danger);
 }
 
+mark.leak {
+  background: none;
+  outline: 1px solid var(--danger);
+}
+
 .pair .section-head {
   position: sticky;
   top: 0;

@@ -111,6 +111,36 @@ Contact [EMAIL_2] or [PHONE_1]. Again: [HOST_1].[DOMAIN_1].[TLD_1] [IP_1]`
 	if res.Redacted != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", res.Redacted, want)
 	}
+	if res.Leaks != nil {
+		t.Fatalf("no value is left in this text, got leaks %+v", res.Leaks)
+	}
+}
+
+func TestRedactReportsValuesLeftInTheText(t *testing.T) {
+	rs := sets(t, &rules.Ruleset{Name: "s", Enabled: true, Rules: []*rules.Rule{
+		{Name: "secret", Enabled: true, Type: "regex", Patterns: []string{`password=(\S+)`}, Placeholder: "[SECRET_#]"},
+		{Name: "names", Enabled: true, Type: "words", Patterns: []string{"Phoenix", "acme"}, Placeholder: "[NAME_#]"},
+	}}, &rules.Ruleset{Name: "off", Enabled: false, Rules: []*rules.Rule{
+		{Name: "words", Enabled: true, Type: "words", Patterns: []string{"login"}},
+	}})
+	known := []Entry{{Token: "[HOST_1]", Original: "db01", Ruleset: "n", Rule: "hosts", Placeholder: "[HOST_#]", Numbers: []int{1}}}
+	text := "password=hunter2 password=ok\nlogin with HUNTER2 to acmecorp, okay? db01 too, and Phoenix"
+	res, err := Redact(context.Background(), text, rs, known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "password=[SECRET_1] password=[SECRET_2]\nlogin with HUNTER2 to acmecorp, okay? db01 too, and [NAME_1]"; res.Redacted != want {
+		t.Fatalf("got %q", res.Redacted)
+	}
+	// "ok" is too short to check; "login" is in a switched-off ruleset; "Phoenix" is fully redacted
+	want := []Leak{
+		{Value: "hunter2", Ruleset: "s", Rule: "secret", Count: 1},
+		{Value: "db01", Ruleset: "n", Rule: "hosts", Count: 1},
+		{Value: "acme", Ruleset: "s", Rule: "names", Count: 1},
+	}
+	if !reflect.DeepEqual(res.Leaks, want) {
+		t.Fatalf("leaks: %+v", res.Leaks)
+	}
 }
 
 func TestRedactStopsWhenContextEnds(t *testing.T) {

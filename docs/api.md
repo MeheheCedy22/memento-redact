@@ -52,6 +52,7 @@ curl -X POST --data 'ip 8.8.8.8, mail jane@corp.com' localhost:8080/v1/preview
 - `ruleset` and `rule` name the rule that matched first.
 - `placeholder` is the rule's placeholder, and `numbers` the numbers put into it (one per part with *Number each part*, none for a fixed placeholder). They let `known` continue the numbering.
 - Two entries can share a token. This happens with fixed placeholders (no `#`), where every value gets the same text.
+- `leaks` (only when there are any) lists values that are redacted somewhere but still appear in `redacted` as they are, as `{"value", "ruleset", "rule", "count"}`. The values checked are this text's `map`, the `known` entries, and the words of enabled words rules; matching ignores case and also finds a value inside a longer word. Values under 3 characters are not checked. Example: `password=hunter2 … login with hunter2` gives `{"value": "hunter2", …, "count": 1}`. The UI outlines them and asks before **Copy**.
 - `warnings` (only when there are any) lists rules that probably redact too much or too little, as `{"ruleset", "rule", "message"}`, for every rule used, switched-off ones included. See [rules.md](rules.md#warnings). This is how the Rules page shows warnings for unsaved edits.
 - `400`: invalid JSON, or an invalid rule. The message names the ruleset and the rule, e.g. `ruleset "S", rule "R": invalid regex "(": …`.
 - If the client disconnects, the server stops redacting and sends nothing. This is how the UI's live preview drops runs it no longer needs.
@@ -105,7 +106,7 @@ memento-redact-cli <command> [--api URL]
 
 - API URL: `--api`, else the `API_URL` environment variable, else `http://localhost:8080`.
 - On an error it prints the server's message to stderr and exits with code 1. Requests time out after 20 seconds.
-- `redact` prints only the redacted text, with no extra newline, so it works in pipes.
+- `redact` prints only the redacted text, with no extra newline, so it works in pipes. Values that are still in the text (the `leaks` above) are listed on stderr as warnings; the exit code stays 0.
 - `--rules FILE` tries an edited rules file before you import it; the saved rules are not used.
 - `--conversation FILE` is the CLI's conversation: the first `redact` creates the file, later ones keep its placeholders (`web01` stays `[HOST_1]`) and add their new values. `restore` reads it. The file holds the real values and is written with mode `0600`; delete it when the conversation is over.
 - `restore` works like the Restore page and runs locally: the answer is never sent to the server. It prints the restored answer; placeholders it leaves as they are (one that stands for several values, or a numbered one not in the file) are listed on stderr.

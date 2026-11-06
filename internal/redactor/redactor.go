@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/MeheheCedy22/memento-redact/internal/rules"
 )
@@ -26,6 +27,18 @@ type Entry struct {
 type Result struct {
 	Redacted string  `json:"redacted"`
 	Map      []Entry `json:"map"`
+	// Leaks are values that are redacted somewhere but still appear in the text as they are.
+	Leaks []Leak `json:"leaks,omitempty"`
+}
+
+// Leak is a value from the map, an earlier text or a words list that still appears in the redacted text,
+// for example a password redacted after "password=" and repeated without it, or a name inside a longer
+// word. Count is how often it appears; Ruleset and Rule name where it is redacted.
+type Leak struct {
+	Value   string `json:"value"`
+	Ruleset string `json:"ruleset"`
+	Rule    string `json:"rule"`
+	Count   int    `json:"count"`
 }
 
 type span struct {
@@ -99,6 +112,7 @@ func Redact(ctx context.Context, text string, sets []*rules.Ruleset, known []Ent
 		}
 	}
 	var b strings.Builder
+	var plain []string // the parts of the text left as they are
 	last := 0
 	for _, s := range kept {
 		original := text[s.start:s.end]
@@ -126,12 +140,55 @@ func Redact(ctx context.Context, text string, sets []*rules.Ruleset, known []Ent
 		}
 		res.Map[i].Count++
 		b.WriteString(text[last:s.start])
+		plain = append(plain, text[last:s.start])
 		b.WriteString(res.Map[i].Token)
 		last = s.end
 	}
 	b.WriteString(text[last:])
+	plain = append(plain, text[last:])
 	res.Redacted = b.String()
+	res.Leaks = leaks(plain, sets, res.Map, known)
 	return res, nil
+}
+
+// leaks finds the values redacted somewhere (this text's map, earlier texts, the words of enabled words
+// rules) that still occur, ignoring case, in the plain parts of the text. Values under 3 characters are
+// skipped: a captured "1" or "on" occurs everywhere by chance.
+func leaks(plain []string, sets []*rules.Ruleset, entries ...[]Entry) []Leak {
+	for i := range plain {
+		plain[i] = strings.ToLower(plain[i])
+	}
+	var out []Leak
+	seen := map[string]bool{}
+	check := func(value, set, rule string) {
+		v := strings.ToLower(value)
+		if utf8.RuneCountInString(strings.TrimSpace(v)) < 3 || seen[v] {
+			return
+		}
+		seen[v] = true
+		n := 0
+		for _, p := range plain {
+			n += strings.Count(p, v)
+		}
+		if n > 0 {
+			out = append(out, Leak{Value: value, Ruleset: set, Rule: rule, Count: n})
+		}
+	}
+	for _, list := range entries {
+		for _, e := range list {
+			check(e.Original, e.Ruleset, e.Rule)
+		}
+	}
+	for _, set := range sets {
+		for _, r := range set.Rules {
+			if set.Enabled && r.Enabled && r.Type == "words" {
+				for _, w := range r.Patterns {
+					check(w, set.Name, r.Name)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // partNumbering numbers placeholder parts by their own value, case-insensitively.
