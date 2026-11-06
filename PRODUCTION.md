@@ -13,6 +13,7 @@ With the published image (linux/amd64 and linux/arm64):
 ```bash
 docker run -d --name memento-redact --restart unless-stopped \
   -p 127.0.0.1:8080:8080 -v memento-data:/app/data \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
   ghcr.io/mehehecedy22/memento-redact:latest
 ```
 
@@ -22,7 +23,7 @@ Without Docker, from the repository root:
 make build web && bin/memento-redact
 ```
 
-Then open `http://localhost:8080`. One process serves the UI and the API. It needs no database and no other services. The container runs as an unprivileged user (uid 65534) and has a healthcheck on `/health`.
+Then open `http://localhost:8080`. One process serves the UI and the API. It needs no database and no other services. The container runs as an unprivileged user (uid 65534) with a read-only root filesystem and no Linux capabilities (Compose and the command above set this up; it writes only to the volume), and has a healthcheck on `/health`.
 
 ## What is stored where
 
@@ -71,6 +72,8 @@ All settings are environment variables. Values that are empty or invalid fall ba
 - **There is no login.** Compose binds the port to `127.0.0.1`, so only your own machine can reach it. Everyone who can reach the port can read and change your rules.
 - **Other websites cannot change anything.** Cross-site `POST`/`PUT` requests from a browser are refused with `403` (Go's `http.CrossOriginProtection`).
 - **Other websites cannot read your rules either.** The server answers only requests addressed to `localhost`, an IP address, or a name in `ALLOWED_HOSTS`. This blocks DNS rebinding, where a malicious site points its own domain at `127.0.0.1` and then reads the server as if it were its own.
+- **The browser is locked down too.** Every response carries a Content Security Policy that lets the page load only its own files, forbids framing (so another site cannot trick you into clicking **Reset all**), and turns off content-type guessing and referrers.
+- **Slow clients** cannot hold connections open: the server times out request headers after 10 seconds and bodies after a minute.
 - **Exposing it**: put it behind a reverse proxy with authentication and TLS before you change the port mapping, and add the name you open it with to `ALLOWED_HOSTS`. The **Copy** button needs HTTPS or localhost. Over plain HTTP, select the redacted text and press Ctrl+C.
 - **Redaction finds only what the rules describe.** Names of people, customers and projects must be added by hand, and secrets without a key name or a known format are not found. Always read the redacted text before you send it anywhere.
 
@@ -99,13 +102,13 @@ docker compose exec -T memento-redact memento-redact-cli rules import < backup.y
 | **Copy** says it needs HTTPS | The page is on plain HTTP and not on localhost. Use HTTPS or localhost, or select the text and press Ctrl+C. |
 | A script gets `403 cross-origin request detected` | The script sends an `Origin` or `Sec-Fetch-Site` header from another site. Drop those headers. |
 | Something is not redacted | Add a word or a rule; see [docs/rules.md](docs/rules.md#writing-your-own-rules). |
-| Large pastes are slow | With the presets, the server needs about 2 seconds per MiB on a desktop CPU. The UI asks again when you pause typing, and the server stops the run it no longer needs. |
+| Large pastes are slow | With the presets, the server needs about 2 to 7 seconds per MiB on a desktop CPU, more for text full of keys, values and usernames. A few KiB take milliseconds. The UI asks again when you pause typing, and the server stops the run it no longer needs. |
 
 ## Test
 
 ```bash
 go test -race ./...                 # rules, every factory preset, redaction, API
-cd web && npm ci && npm test        # debug report builder
+cd web && npm ci && npm test        # restore, debug report, merge and profiles, map sorting
 npm run build                       # type-check and build the UI
 make docker                         # build the production image
 ```
@@ -125,7 +128,7 @@ curl -X POST --data "ip 8.8.8.8, mail jane@corp.com" localhost:8080/v1/preview
 
 ## CI/CD
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and pull request. It checks `gofmt`, runs `go vet` and `go test -race`, and type-checks and builds the frontend. Then it builds the production image and smoke-tests it: health, redaction, UI and CLI.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and pull request. It checks `gofmt`, runs `go vet`, `go test -race` and `govulncheck`, runs the frontend tests and `npm audit` for the runtime dependencies, and type-checks and builds the frontend. Then it builds the production image and smoke-tests it: health, redaction, UI and CLI.
 
 On `main` and on `v*` tags, the image is pushed to `ghcr.io/mehehecedy22/memento-redact` for amd64 and arm64, with these tags:
 

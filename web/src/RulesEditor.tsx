@@ -266,7 +266,11 @@ export default function RulesEditor({ draft, saved, setDraft, defaults, hits, wa
                 </a>
               )}
               {preset && (
-                <button onClick={() => setDraft(updateSet(draft, i, preset))} title="Replace this ruleset with its factory version.">
+                <button
+                  // sample lines are not part of the preset: keep yours, by rule name
+                  onClick={() => setDraft(updateSet(draft, i, { ...preset, rules: preset.rules.map((r) => ({ ...r, samples: set.rules.find((o) => o.name === r.name)?.samples })) }))}
+                  title="Replace this ruleset with its factory version. Your sample lines are kept."
+                >
                   Restore preset
                 </button>
               )}

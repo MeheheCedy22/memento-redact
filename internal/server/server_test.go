@@ -144,6 +144,19 @@ func TestRulesetsPersistAcrossRestartsAndInvalidSavesAreRejected(t *testing.T) {
 	}
 }
 
+func TestSecurityHeaders(t *testing.T) {
+	rec := do(newHandler(t, newTestConfig(t)), http.MethodGet, "/health", "", "")
+	for header, want := range map[string]string{
+		"Content-Security-Policy": "frame-ancestors 'none'",
+		"X-Frame-Options":         "DENY",
+		"X-Content-Type-Options":  "nosniff",
+	} {
+		if got := rec.Header().Get(header); !strings.Contains(got, want) {
+			t.Errorf("%s = %q, want it to contain %q", header, got, want)
+		}
+	}
+}
+
 func TestPreviewReturnsRuleWarnings(t *testing.T) {
 	h := newHandler(t, newTestConfig(t))
 	body := `{"text":"host=web01 rest","rulesets":[{"name":"S","enabled":true,"rules":[{"name":"R","enabled":true,"type":"regex","patterns":["host=(.*)"]}]}]}`

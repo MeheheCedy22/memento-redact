@@ -6,6 +6,7 @@ import { highlight, NumberedText, NumberedTextarea } from './Numbered'
 import Restore from './Restore'
 import { remember } from './restore'
 import { debugReport, reasons, type Mark } from './debug'
+import { nextSort, sortMap, type Sort, type SortKey } from './mapsort'
 import { activeProfile, applySwitches, switchesOf } from './rulesets'
 import { savePairHeight, saveProfiles, saveReasons, savedPairHeight, savedProfiles, savedReasons } from './storage'
 import { Count, hitKey, updateRule, updateSet } from './RulesEditor'
@@ -27,6 +28,14 @@ Owner: jane.doe@domain.tld, +420 777 123 456
 const entryKey = (entry: MapEntry) => entry.token + '\u0000' + entry.original
 // select values of "New reason…" and "Save switches as…"; a name cannot contain them
 const newReason = '\u0000new'
+
+// the sortable columns of the map table: key, header, what it means
+const columns: [SortKey, string, string][] = [
+  ['token', 'Placeholder', 'Placeholder'],
+  ['original', 'Original', 'Original value'],
+  ['rule', 'Rule', 'Rule that redacted it'],
+  ['count', '#', 'Occurrences'],
+]
 const newProfile = '\u0000save'
 
 type Props = {
@@ -53,6 +62,7 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
   const [debug, setDebug] = useState(false)
   const [reported, setReported] = useState(new Map<string, Omit<Mark, 'entry'>>())
   const [missed, setMissed] = useState<string[]>([])
+  const [sort, setSort] = useState<Sort>(null)
   const [reportNote, setReportNote] = useState('')
   const [ownReasons, setOwnReasons] = useState(savedReasons)
   const [profiles, setProfiles] = useState(savedProfiles)
@@ -290,15 +300,19 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
               <table className="map">
                 <thead>
                   <tr>
-                    <th>Placeholder</th>
-                    <th>Original</th>
-                    <th>Rule</th>
-                    <th title="Occurrences">#</th>
+                    {columns.map(([key, label, meaning]) => (
+                      <th key={key} aria-sort={sort?.key === key ? (sort.desc ? 'descending' : 'ascending') : undefined}>
+                        <button className="link sort" onClick={() => setSort(nextSort(sort, key))} title={`${meaning}. Click to sort, again to reverse, a third time for the order of appearance.`}>
+                          {label}
+                          {sort?.key === key && (sort.desc ? ' ▼' : ' ▲')}
+                        </button>
+                      </th>
+                    ))}
                     {debug && mode === 'redact' && <th>Report</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((entry) => (
+                  {sortMap(shown, sort).map((entry) => (
                     <tr key={entryKey(entry)}>
                       <td>
                         <button className="link mono" onClick={() => jumpTo(entry.token)} title="Show in the text. Click again for the next occurrence.">

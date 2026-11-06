@@ -27,9 +27,14 @@ func main() {
 		log.Printf("web UI not found in %s (build it with: cd web && npm run build); API only", cfg.StaticDir)
 	}
 
+	// Header and body timeouts stop slow clients from holding connections open; no write timeout,
+	// since redacting a large text with many rules can take seconds.
 	httpSrv := &http.Server{
-		Addr:    cfg.ListenAddr,
-		Handler: srv,
+		Addr:              cfg.ListenAddr,
+		Handler:           srv,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       time.Minute,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	go func() {

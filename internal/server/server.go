@@ -48,7 +48,20 @@ func New(cfg *config.Config) (http.Handler, error) {
 		mux.Handle("GET /", http.FileServer(http.Dir(cfg.StaticDir)))
 	}
 	// No login, so stop other websites from making the browser read, reset or rewrite anything.
-	return loggingMiddleware(allowHosts(cfg.AllowedHosts, new(http.CrossOriginProtection).Handler(mux))), nil
+	return loggingMiddleware(securityHeaders(allowHosts(cfg.AllowedHosts, new(http.CrossOriginProtection).Handler(mux)))), nil
+}
+
+// securityHeaders lets the page load only its own files, stops other sites from framing it (clickjacking
+// on Reset all), and stops the browser from guessing content types.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // allowHosts refuses requests addressed to host names other than localhost and the configured ones.

@@ -131,7 +131,7 @@ The secret patterns are adapted from the [gitleaks default config](https://githu
 On every start, the server compares your rules with the factory presets (`rules.Sync`):
 
 - A preset you have not edited is replaced by the new factory version. Your on/off switches are kept.
-- A preset you edited stays as it is, and the Rules page shows **Update available**. **Restore preset** takes the new version and drops your edits to that ruleset.
+- A preset you edited stays as it is, and the Rules page shows **Update available**. **Restore preset** takes the new version and drops your edits to that ruleset; sample lines are kept.
 - Your own rulesets, and rulesets without a `preset` stamp, are never touched.
 - New presets and presets you deleted are not added automatically. Add them under **Add preset…**.
 

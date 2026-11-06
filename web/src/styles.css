@@ -456,6 +456,12 @@ button.chip {
   font-weight: 500;
 }
 
+.map th button.sort {
+  color: inherit;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
 /* rules page */
 
 .toolbar {

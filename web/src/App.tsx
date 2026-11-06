@@ -24,7 +24,9 @@ function App() {
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const dirty = saved !== null && JSON.stringify(saved) !== JSON.stringify(draft)
+  // '' and false count as a missing field, so typing into a field and clearing it again is no change
+  const unset = (_: string, value: unknown) => (value === '' || value === false ? undefined : value)
+  const dirty = saved !== null && JSON.stringify(saved, unset) !== JSON.stringify(draft, unset)
   const upToDate = !previewError && result !== null && result.input === text && result.rules === draft
 
   useEffect(() => {

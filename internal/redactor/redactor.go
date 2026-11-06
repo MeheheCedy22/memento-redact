@@ -2,6 +2,7 @@ package redactor
 
 import (
 	"context"
+	"index/suffixarray"
 	"sort"
 	"strconv"
 	"strings"
@@ -155,22 +156,18 @@ func Redact(ctx context.Context, text string, sets []*rules.Ruleset, known []Ent
 // rules) that still occur, ignoring case, in the plain parts of the text. Values under 3 characters are
 // skipped: a captured "1" or "on" occurs everywhere by chance.
 func leaks(plain []string, sets []*rules.Ruleset, entries ...[]Entry) []Leak {
-	for i := range plain {
-		plain[i] = strings.ToLower(plain[i])
-	}
+	// One index over all plain parts answers each value in about log(n) steps: a 1 MB log with
+	// thousands of distinct values must not take one full scan per value.
+	index := suffixarray.New([]byte(strings.ToLower(strings.Join(plain, "\x00"))))
 	var out []Leak
 	seen := map[string]bool{}
 	check := func(value, set, rule string) {
 		v := strings.ToLower(value)
-		if utf8.RuneCountInString(strings.TrimSpace(v)) < 3 || seen[v] {
+		if utf8.RuneCountInString(strings.TrimSpace(v)) < 3 || seen[v] || strings.ContainsRune(v, 0) {
 			return
 		}
 		seen[v] = true
-		n := 0
-		for _, p := range plain {
-			n += strings.Count(p, v)
-		}
-		if n > 0 {
+		if n := len(index.Lookup([]byte(v), -1)); n > 0 {
 			out = append(out, Leak{Value: value, Ruleset: set, Rule: rule, Count: n})
 		}
 	}

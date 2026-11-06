@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"reflect"
 	"testing"
 
@@ -79,5 +80,53 @@ func TestMergeReplacesByNameAndAppendsNew(t *testing.T) {
 	}
 	if current[1].Description != "old" {
 		t.Error("merge must not change the current list")
+	}
+}
+
+func TestParseTakesFlagsAnywhere(t *testing.T) {
+	for _, args := range [][]string{{"--add", "f.yml"}, {"f.yml", "--add"}, {"f.yml", "--add", "extra"}} {
+		fs := flag.NewFlagSet("x", flag.ContinueOnError)
+		add := fs.Bool("add", false, "")
+		if arg := parse(fs, args); arg != "f.yml" || !*add {
+			t.Errorf("%q: arg %q, add %v", args, arg, *add)
+		}
+	}
+	if arg := parse(flag.NewFlagSet("x", flag.ContinueOnError), []string{"-"}); arg != "-" {
+		t.Errorf("- (stdin) must stay an argument, got %q", arg)
+	}
+}
+
+func TestProfileRoundTripAndPartialApply(t *testing.T) {
+	sets := func() []*rules.Ruleset {
+		return []*rules.Ruleset{
+			{Name: "Net", Enabled: true, Rules: []*rules.Rule{{Name: "IP", Enabled: true}, {Name: "MAC", Enabled: false}}},
+			{Name: "Org", Enabled: true, Rules: []*rules.Rule{{Name: "Names", Enabled: true}}},
+		}
+	}
+	work := sets()
+	work[0].Rules[0].Enabled, work[1].Enabled = false, false
+	saved := profileOf(work)
+
+	got := sets()
+	applyProfile(got, saved)
+	if !reflect.DeepEqual(profileOf(got), saved) {
+		t.Errorf("applying a profile must give its switches back: %+v", profileOf(got))
+	}
+	// a profile that names only Net leaves Org as it is
+	got = sets()
+	applyProfile(got, saved[:1])
+	if got[0].Rules[0].Enabled || !got[1].Enabled {
+		t.Errorf("partial profile: %+v", profileOf(got))
+	}
+}
+
+func TestPickKeepsFileOrderAndIgnoresCase(t *testing.T) {
+	file := []*rules.Ruleset{{Name: "A"}, {Name: "B"}, {Name: "C"}}
+	var names []string
+	for _, s := range pick(file, []string{"c", " a"}) {
+		names = append(names, s.Name)
+	}
+	if !reflect.DeepEqual(names, []string{"A", "C"}) {
+		t.Errorf("pick: %v", names)
 	}
 }

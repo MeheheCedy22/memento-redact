@@ -49,8 +49,9 @@ func runRedact(cmd string, args []string) {
 	fs, api := newFlags(cmd)
 	input := fs.String("input", "", "text to redact; stdin when empty")
 	rulesFile := fs.String("rules", "", "redact with this YAML/JSON rules file instead of the saved rules")
+	profileFile := fs.String("profile", "", "switch rulesets and rules on or off as in this profile file, for this run only")
 	convFile := fs.String("conversation", "", "JSON file with the values of earlier texts; created if missing, this text's values are added")
-	fs.Parse(args)
+	parse(fs, args)
 
 	text := []byte(*input)
 	if *input == "" {
@@ -59,6 +60,12 @@ func runRedact(cmd string, args []string) {
 	var sets []*rules.Ruleset // nil: the saved rules
 	if *rulesFile != "" {
 		sets = readRules(*rulesFile)
+	}
+	if *profileFile != "" {
+		if sets == nil {
+			sets = getRulesets(*api)
+		}
+		applyProfile(sets, readProfile(*profileFile))
 	}
 	var known []redactor.Entry
 	if *convFile != "" {
@@ -86,7 +93,7 @@ func runRestore(args []string) {
 	fs := flag.NewFlagSet("restore", flag.ExitOnError)
 	input := fs.String("input", "", "the answer; stdin when empty")
 	convFile := fs.String("conversation", "", "the file written by redact --conversation (required)")
-	fs.Parse(args)
+	parse(fs, args)
 	if *convFile == "" {
 		fatal(fmt.Errorf("restore needs --conversation FILE, the file written by redact --conversation"))
 	}
@@ -153,7 +160,7 @@ func writeConversation(path string, conv []redactor.Entry) {
 	}
 }
 
-// runRules manages the saved rulesets: list, export, import, reset, check, enable, disable.
+// runRules manages the saved rulesets: list, export, import, reset, check, profile, enable, disable.
 func runRules(args []string) {
 	if len(args) == 0 {
 		usage()
@@ -161,7 +168,8 @@ func runRules(args []string) {
 	}
 	fs, api := newFlags("rules " + args[0])
 	add := fs.Bool("add", false, "import: add the file's rulesets to yours (one with the same name replaces yours) instead of replacing all")
-	fs.Parse(args[1:])
+	only := fs.String("only", "", "import: only these rulesets from the file, comma-separated, any case")
+	arg := parse(fs, args[1:])
 
 	switch args[0] {
 	case "list":
@@ -179,12 +187,15 @@ func runRules(args []string) {
 		}
 	case "export":
 		path := "/v1/rulesets?format=yaml"
-		if name := fs.Arg(0); name != "" {
-			path += "&name=" + url.QueryEscape(name)
+		if arg != "" {
+			path += "&name=" + url.QueryEscape(arg)
 		}
 		os.Stdout.Write(request(*api, http.MethodGet, path, "", nil))
 	case "import":
-		incoming := readRules(fs.Arg(0))
+		incoming := readRules(arg)
+		if *only != "" {
+			incoming = pick(incoming, strings.Split(*only, ","))
+		}
 		if *add {
 			save(*api, merge(getRulesets(*api), incoming))
 		} else {
@@ -195,23 +206,36 @@ func runRules(args []string) {
 		}
 		printWarnings(os.Stderr, incoming)
 	case "reset":
-		if name := fs.Arg(0); name != "" {
-			resetOne(*api, name)
+		if arg != "" {
+			resetOne(*api, arg)
 			return
 		}
 		request(*api, http.MethodPost, "/v1/rulesets/reset", "", nil)
 		fmt.Fprintln(os.Stderr, "rulesets reset to factory defaults")
 	case "check":
 		var sets []*rules.Ruleset
-		if fs.Arg(0) != "" {
-			sets = readRules(fs.Arg(0))
+		if arg != "" {
+			sets = readRules(arg)
 		} else if sets = getRulesets(*api); rules.Compile(sets) != nil {
 			fatal(fmt.Errorf("the saved rules do not compile with this CLI version"))
 		}
 		printWarnings(os.Stdout, sets)
 		checkSamples(*api, sets)
+	case "profile":
+		sets := getRulesets(*api)
+		if arg == "" {
+			data, err := json.MarshalIndent(profileOf(sets), "", "  ")
+			if err != nil {
+				fatal(err)
+			}
+			fmt.Println(string(data))
+			return
+		}
+		applyProfile(sets, readProfile(arg))
+		save(*api, sets)
+		fmt.Fprintln(os.Stderr, "profile applied (saved)")
 	case "enable", "disable":
-		setEnabled(*api, fs.Arg(0), args[0] == "enable")
+		setEnabled(*api, arg, args[0] == "enable")
 	default:
 		usage()
 		os.Exit(1)
@@ -254,8 +278,91 @@ func resetOne(api, name string) {
 	if i < 0 {
 		fatal(fmt.Errorf("%q is not a factory preset; see: memento-redact-cli rules list", name))
 	}
-	save(api, merge(getRulesets(api), defaults[i:i+1]))
+	current := getRulesets(api)
+	// sample lines are not part of the preset: keep yours, by rule name
+	if j := slices.IndexFunc(current, func(s *rules.Ruleset) bool { return s.Name == defaults[i].Name }); j >= 0 {
+		for _, r := range defaults[i].Rules {
+			for _, old := range current[j].Rules {
+				if r.Name == old.Name {
+					r.Samples = old.Samples
+				}
+			}
+		}
+	}
+	save(api, merge(current, defaults[i:i+1]))
 	fmt.Fprintf(os.Stderr, "%s: factory version restored (saved)\n", defaults[i].Name)
+}
+
+// pick returns the rulesets of a file named in names (any case), in file order, as the Import… picker does.
+func pick(sets []*rules.Ruleset, names []string) []*rules.Ruleset {
+	var out []*rules.Ruleset
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if !slices.ContainsFunc(sets, func(s *rules.Ruleset) bool { return strings.EqualFold(s.Name, name) }) {
+			fatal(fmt.Errorf("%q is not in the file", name))
+		}
+	}
+	for _, set := range sets {
+		if slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(strings.TrimSpace(n), set.Name) }) {
+			out = append(out, set)
+		}
+	}
+	return out
+}
+
+// A profile is the on/off state of rulesets and their rules, matched by name: the format the Redact page
+// keeps under "Save switches as…".
+type switchState struct {
+	Name string `json:"name"`
+	On   bool   `json:"on"`
+}
+
+type setSwitches struct {
+	switchState
+	Rules []switchState `json:"rules"`
+}
+
+func profileOf(sets []*rules.Ruleset) []setSwitches {
+	out := []setSwitches{}
+	for _, set := range sets {
+		s := setSwitches{switchState{set.Name, set.Enabled}, []switchState{}}
+		for _, r := range set.Rules {
+			s.Rules = append(s.Rules, switchState{r.Name, r.Enabled})
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// applyProfile sets the switches of p. Rulesets and rules it does not name keep their state, as in the UI.
+func applyProfile(sets []*rules.Ruleset, p []setSwitches) {
+	for _, set := range sets {
+		for _, s := range p {
+			if s.Name != set.Name {
+				continue
+			}
+			set.Enabled = s.On
+			for _, r := range set.Rules {
+				for _, rs := range s.Rules {
+					if rs.Name == r.Name {
+						r.Enabled = rs.On
+					}
+				}
+			}
+		}
+	}
+}
+
+func readProfile(path string) []setSwitches {
+	var p []setSwitches
+	if err := json.Unmarshal(readInput(path), &p); err != nil {
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) {
+			fatal(fmt.Errorf("%s: %w", path, err))
+		}
+		fatal(fmt.Errorf("%s: not a profile file; rules profile prints one", path))
+	}
+	return p
 }
 
 // merge adds incoming rulesets to current ones: one with the same name is replaced in place, new ones go
@@ -341,6 +448,24 @@ func newFlags(name string) (*flag.FlagSet, *string) {
 	return fs, fs.String("api", getenv("API_URL", "http://localhost:8080"), "memento-redact API base URL")
 }
 
+// parse reads flags anywhere among args, so "rules import FILE --add" works like "rules import --add FILE",
+// and returns the first other argument, or "".
+func parse(fs *flag.FlagSet, args []string) string {
+	var rest []string
+	for {
+		fs.Parse(args)
+		if fs.NArg() == 0 {
+			break
+		}
+		rest = append(rest, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+	if len(rest) == 0 {
+		return ""
+	}
+	return rest[0]
+}
+
 // readInput reads a file, or stdin when path is empty or "-".
 func readInput(path string) []byte {
 	var data []byte
@@ -405,16 +530,22 @@ func usage() {
   health                          check the API
   redact  [--input TEXT]          print the redacted text (reads stdin without --input)
           [--rules FILE]          redact with a rules file instead of the saved rules
+          [--profile FILE]        switch rulesets and rules as in a profile file, for this run only
           [--conversation FILE]   keep the placeholders of earlier texts, add this text's values
   preview [same flags]            print redacted text and the token map as JSON
   restore --conversation FILE     put the real values back into an LLM answer (stdin or --input)
   rules list                      show rulesets and rules with their on/off state and updates
   rules export [NAME]             print saved rulesets, or only ruleset NAME, as YAML
-  rules import [--add] [FILE|-]   replace all rulesets with a YAML/JSON file (or stdin);
-                                  --add adds them instead (same name replaces yours)
+  rules import [--add] [--only NAMES] [FILE|-]
+                                  replace all rulesets with a YAML/JSON file (or stdin);
+                                  --add adds them instead (same name replaces yours),
+                                  --only takes just these rulesets ("Network,Secrets")
   rules reset [NAME]              restore all factory presets, or only preset NAME
   rules check [FILE]              show rule warnings, and each rule's sample lines redacted by that rule alone
+  rules profile [FILE]            print the on/off switches as a profile file, or apply one and save
   rules enable|disable NAME       toggle a ruleset ("Network") or rule ("Network/Public IPv4")
+
+flags can go before or after the other arguments
 
 examples:
   memento-redact-cli redact < app.log > redacted.txt
