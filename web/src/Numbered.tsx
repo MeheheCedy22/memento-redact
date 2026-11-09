@@ -77,7 +77,7 @@ export function highlight(text: string, map: MapEntry[], leaks: Leak[] = []): Pa
         ? [part]
         : cut(part.text, pattern, (value) => {
             const leak = byValue.get(value.toLowerCase())
-            const title = `Not redacted here, but redacted elsewhere by ${leak?.ruleset} › ${leak?.rule}`
+            const title = `Not redacted here, though ${leak?.ruleset} › ${leak?.rule} covers this value`
             return (t, key) => <mark key={key} className="leak" title={title}>{t}</mark>
           }),
     )

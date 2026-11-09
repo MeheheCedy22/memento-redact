@@ -176,6 +176,9 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
 
   return (
     <main className="workspace">
+      {/* outside the scroll area, so it stays in view and the two columns stay aligned */}
+      {mode === 'redact' && previewError && <p className="error notice" role="alert">Not redacted: {previewError}</p>}
+      {mode === 'redact' && !previewError && leaks && <p className="error notice" role="alert">Not redacted everywhere: {leaks}. Outlined in the text.</p>}
       {/* one scroll area for both columns, so long texts stay side by side; its height changes only by dragging the corner */}
       <div className="pair" ref={pairRef}>
         {mode === 'restore' ? (
@@ -218,8 +221,6 @@ export default function Workspace({ mode, conversation, onCopied, onNewConversat
                   Copy
                 </button>
               </div>
-              {previewError && <p className="error" role="alert">Not redacted: {previewError}</p>}
-              {!previewError && leaks && <p className="error" role="alert">Not redacted everywhere: {leaks}. Outlined below.</p>}
               <div ref={outputRef} className={`output mono ${upToDate ? '' : 'stale'}`} aria-label="Redacted text" aria-live="polite">
                 {result?.redacted ? <NumberedText parts={highlight(result.redacted, result.map, result.leaks)} /> : <span className="muted">The redacted text appears here.</span>}
               </div>

@@ -151,6 +151,17 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* stays in view while the page scrolls; a long list scrolls by itself */
+.notice {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  max-height: 5.5em;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+  background: var(--bg);
+}
+
 .count {
   color: var(--muted);
   font-size: 12px;
